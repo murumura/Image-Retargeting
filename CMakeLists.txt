@@ -30,7 +30,9 @@ include_directories(
 # Compile options
 ###########################################################################
 list(APPEND RESIZING_CXX_FLAGS "-std=c++17")
-
+# Turn of eigen tensor warning message (https://stackoverflow.com/questions/54526502/compiler-warnings-with-eigen-tensor-example)
+list(APPEND RESIZING_CXX_FLAGS "-isystem /usr/include/eigen3/unsupported/Eigen/CXX11/src/Tensor")
+list(APPEND RESIZING_CXX_FLAGS "-w")
 ###########################################################################
 # Sources/Headers
 ###########################################################################
@@ -38,6 +40,7 @@ set (RESIZING_HEADER
     # image headers
     ${CMAKE_SOURCE_DIR}/src/image/image.h
     ${CMAKE_SOURCE_DIR}/src/image/imageIO.h
+    ${CMAKE_SOURCE_DIR}/src/image/pad_op.h
     # numerical headers
     ${CMAKE_SOURCE_DIR}/src/numerical/types.h
 )

@@ -3,7 +3,7 @@ INCLUDES := $(wildcard *.h  ./src/numerical/*.h  ./src/image/*.h ./src/utils/*.h
 TESTS := $(wildcard ./test/*.cpp ) 
 DOCKER_DIR:= ./docker
 
-export BUILDTYPE ?= Debug
+export BUILDTYPE ?= default
 buildtype := $(shell echo "$(BUILDTYPE)" | tr "[A-Z]" "[a-z]")
 export BUILDDIR ?= build/default/$(buildtype)
 

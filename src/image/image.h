@@ -1,10 +1,9 @@
 #ifndef IMAGE_H
 #define IMAGE_H
-#include <type_traits>
+#include <cassert>
+#include <string>
 #include <unsupported/Eigen/CXX11/Tensor>
 #include <utility>
-#include <variant>
-
 namespace Image {
     /// < Alias for image type
     template <typename TColorDepth, int Rank>
@@ -28,7 +27,8 @@ namespace Image {
             dims[2] = 1;
             return dims;
         }
-        template <typename Output, typename Device>
+
+        template <typename Output, typename Device = Eigen::DefaultDevice>
         void eval(
             const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& rgbImage,
             Output& output,
@@ -52,6 +52,10 @@ namespace Image {
         {
             return rgbImage.customOp(rgbToGray<Scalar>());
         }
+    };
+
+    template <typename ScalarA, typename ScalerB, typename Kernel, typename BorderTypes>
+    struct applyKernel {
     };
 
     template <typename TColorDepth, int Rank, typename Func>
