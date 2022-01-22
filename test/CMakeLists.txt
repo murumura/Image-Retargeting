@@ -19,7 +19,6 @@ target_compile_options(resizing_test PUBLIC ${RESIZING_CXX_FLAGS})
 target_link_libraries(resizing_test
     gtest
     gtest_main
-    gmock
     pthread
 )
 

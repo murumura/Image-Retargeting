@@ -9,22 +9,6 @@ namespace Image {
         EDGE = 2, // pads with the edge values, with string "edge"
     };
 
-    PadMode stringToPadMode(const std::string& mode)
-    {
-        if (mode == "constant") {
-            return PadMode::CONSTANT;
-        }
-        else if (mode == "reflect") {
-            return PadMode::REFLECT;
-        }
-        else if (mode == "edge") {
-            return PadMode::EDGE;
-        }
-        else {
-            throw std::invalid_argument("Unknown padding mode: " + mode);
-        }
-    }
-
     /* C C |3 1 2| C C */
     template <typename Scalar>
     struct padConstant {
@@ -35,7 +19,7 @@ namespace Image {
     public:
         padConstant() : padValue(0), padWidth{0}, padHeight{0} {}
 
-        padConstant(Scalar value, int padHeight_, int padWidth_) : padValue(value), padWidth{padWidth_}, padHeight{padHeight_} {}
+        padConstant(int padHeight_, int padWidth_, Scalar value = 0) : padValue(value), padWidth{padWidth_}, padHeight{padHeight_} {}
 
         ImageDsizes dimensions(const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& image) const
         {
@@ -199,6 +183,44 @@ namespace Image {
                         .template concatenate(paddingD, 0);
             // clang-format on
         }
+    };
+
+    template <typename Scalar, PadMode Mode>
+    struct paddingTrait {
+    };
+
+    template <typename Scalar>
+    struct paddingTrait<Scalar, PadMode::CONSTANT> {
+        using type = padConstant<Scalar>;
+    };
+
+    template <typename Scalar>
+    struct paddingTrait<Scalar, PadMode::REFLECT> {
+        using type = padReflect<Scalar>;
+    };
+
+    template <typename Scalar>
+    struct paddingTrait<Scalar, PadMode::EDGE> {
+        using type = padEdge<Scalar>;
+    };
+
+    template <typename Scalar, PadMode Mode>
+    struct PadImageOp {
+    public:
+        using PadType = typename paddingTrait<Scalar, Mode>::type;
+
+        template <typename... Args>
+        explicit PadImageOp(Args&&... args) : padder(std::forward<Args>(args)...)
+        {
+        }
+
+        auto operator()(const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& image)
+        {
+            return image.customOp(padder);
+        }
+
+    private:
+        PadType padder;
     };
 
 } // namespace Image

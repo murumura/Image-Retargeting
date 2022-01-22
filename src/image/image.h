@@ -54,10 +54,6 @@ namespace Image {
         }
     };
 
-    template <typename ScalarA, typename ScalerB, typename Kernel, typename BorderTypes>
-    struct applyKernel {
-    };
-
     template <typename TColorDepth, int Rank, typename Func>
     void forEachPixel(const Eigen::Tensor<TColorDepth, Rank, Eigen::RowMajor>& image, Func func)
     {

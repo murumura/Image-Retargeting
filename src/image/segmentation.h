@@ -40,16 +40,10 @@ namespace Image {
         PointSet(int numElements_)
         {
             numElements = numElements_;
-
-            mapping = new PointSetElement[numElements];
-
+            mapping.resize(numElements);
             for (int i = 0; i < numElements; i++) {
-                mapping[i] = PointSetElement(i);
+                mapping.emplace_back(PointSetElement(i));
             }
-        }
-        ~PointSet()
-        {
-            delete[] mapping;
         }
 
         int numElements;
@@ -86,7 +80,7 @@ namespace Image {
         int size(unsigned int p) { return mapping[p].size; }
 
     private:
-        PointSetElement* mapping;
+        std::vector<PointSetElement> mapping;
     };
 
     class GraphSegmentation {
@@ -97,11 +91,6 @@ namespace Image {
         }
 
         ~GraphSegmentation(){};
-
-        template <typename TColorDepth, int Rank>
-        void processImage(
-            const Eigen::Tensor<TColorDepth, Rank, Eigen::RowMajor>& imgSrc,
-            Eigen::Tensor<TColorDepth, Rank, Eigen::RowMajor>& imgDst);
 
         void setSigma(double sigma_)
         {
@@ -117,6 +106,11 @@ namespace Image {
 
         void setMinSize(int minSize_) { minSize = minSize_; }
         int getMinSize() { return minSize; }
+
+        template <typename TColorDepth, int Rank>
+        void processImage(
+            const Eigen::Tensor<TColorDepth, Rank, Eigen::RowMajor>& imgSrc,
+            Eigen::Tensor<TColorDepth, Rank, Eigen::RowMajor>& imgDst);
 
     private:
         double sigma;
@@ -139,20 +133,85 @@ namespace Image {
         // Segment the graph
         template <typename TColorDepth, int Rank>
         void segmentGraph(
-            const std::vector<Edge>& edges,
+            std::vector<Edge>& edges,
             const Eigen::Tensor<TColorDepth, Rank, Eigen::RowMajor>& imgFiltered,
-            std::vector<PointSet>& es);
+            std::shared_ptr<PointSet>& es)
+        {
+            int height = imgFiltered.dimension(0);
+            int width = imgFiltered.dimension(1);
+            int totalPoints = (int)(height * width);
+
+            // Sort edges
+            std::sort(edges.begin(), edges.end());
+
+            // Create a set with all point (by default mapped to themselves)
+            es = std::make_shared<PointSet>(height * width);
+
+            // Thresholds
+            std::vector<float> thresholds(k, totalPoints);
+
+            for (int i = 0; i < edges.size(); i++) {
+
+                int pA = es->getBasePoint(edges[i].from);
+                int pB = es->getBasePoint(edges[i].to);
+
+                if (pA != pB) {
+                    if (edges[i].weight <= thresholds[pA] && edges[i].weight <= thresholds[pB]) {
+                        es->joinPoints(pA, pB);
+                        pA = es->getBasePoint(pA);
+                        thresholds[pA] = edges[i].weight + k / es->size(pA);
+                        edges[i].weight = 0;
+                    }
+                }
+            }
+        }
 
         // Remove areas too small
         void filterSmallAreas(
             const std::vector<Edge>& edges,
-            std::vector<PointSet>& es);
+            std::shared_ptr<PointSet>& es)
+        {
+            for (int i = 0; i < edges.size(); i++) {
 
+                if (edges[i].weight > 0) {
+
+                    int pA = es->getBasePoint(edges[i].from);
+                    int pB = es->getBasePoint(edges[i].to);
+
+                    if (pA != pB && (es->size(pA) < minSize || es->size(pB) < minSize)) {
+                        es->joinPoints(pA, pB);
+                    }
+                }
+            }
+        }
         // Map the segemented graph to a image with uniques, sequentials ids
         template <typename TColorDepth, int Rank>
         void finalMapping(
-            const std::vector<PointSet>& es,
-            Eigen::Tensor<TColorDepth, Rank, Eigen::RowMajor>& output);
+            std::shared_ptr<PointSet>& es,
+            Eigen::Tensor<TColorDepth, Rank, Eigen::RowMajor>& output)
+        {
+            int height = imgFiltered.dimension(0);
+            int width = imgFiltered.dimension(1);
+            int maximumSize = (int)(height * width);
+
+            int lastId = 0;
+            std::vector<int> mappedId(maximumSize, -1);
+
+            for (int i = 0; i < height; i++) {
+
+                for (int j = 0; j < width; j++) {
+
+                    int point = es->getBasePoint(i * width + j);
+
+                    if (mappedId[point] == -1) {
+                        mappedId[point] = lastId;
+                        lastId++;
+                    }
+
+                    output(i, j, 0) = mappedId[point];
+                }
+            }
+        }
     };
 
     std::shared_ptr<GraphSegmentation> createGraphSegmentation(double sigma, float k, int minSize)
