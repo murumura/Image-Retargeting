@@ -79,10 +79,8 @@ namespace Image {
             dims[2] = image.dimension(2);
 
             // TODO: Handle the case when padding height is greater than image height
-            assert(
-                padHeight < image.dimension(0));
-            assert(
-                padWidth < image.dimension(1));
+            assert(padHeight < image.dimension(0));
+            assert(padWidth < image.dimension(1));
             return dims;
         }
 
@@ -133,4 +131,74 @@ namespace Image {
             // clang-format on
         }
     };
+
+    /* 3 3 |3 1 2| 2 2 */
+    template <typename Scalar>
+    struct padEdge {
+    private:
+        int padWidth, padHeight;
+
+    public:
+        padEdge() : padWidth{0}, padHeight{0} {}
+
+        padEdge(int padHeight_, int padWidth_) : padWidth{padWidth_}, padHeight{padHeight_} {}
+
+        ImageDsizes dimensions(const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& image) const
+        {
+            ImageDsizes dims = image.dimensions();
+            dims[0] = image.dimension(0) + padHeight * 2;
+            dims[1] = image.dimension(1) + padWidth * 2;
+            dims[2] = image.dimension(2);
+            return dims;
+        }
+
+        template <typename Output, typename Device = Eigen::DefaultDevice>
+        void eval(
+            const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& image,
+            Output& output,
+            const Device& device) const
+        {
+
+            const Index height = image.dimension(0);
+            const Index width = image.dimension(1);
+            const Index channelNum = image.dimension(2);
+
+            // clang-format off
+            Eigen::array<Index, 3> offsetL = {0, 0, 0};
+            Eigen::array<Index, 3> extentRL = {height, 1, channelNum};
+
+            Eigen::Tensor<Scalar, 3, Eigen::RowMajor> paddingL = \
+                image.template slice(offsetL, extentRL).eval()
+                     .template broadcast(Eigen::array<Index, 3>{1, padWidth, 1}).eval();
+
+            Eigen::array<Index, 3> offsetR = {0, width - 1, 0};
+            Eigen::Tensor<Scalar, 3, Eigen::RowMajor> paddingR = \
+                image.template slice(offsetR, extentRL).eval()
+                     .template broadcast(Eigen::array<Index, 3>{1, padWidth, 1}).eval();
+
+            // intermediate result we need later
+            Eigen::Tensor<Scalar, 3, Eigen::RowMajor> temp = \
+                paddingL.template concatenate(image, 1).eval()
+                        .template concatenate(paddingR, 1).eval();
+
+            Eigen::array<Index, 3> offsetU = {0, 0, 0};
+            Eigen::array<Index, 3> extentUD = {1, width + 2 * padWidth, channelNum};
+
+            Eigen::Tensor<Scalar, 3, Eigen::RowMajor> paddingU = \
+                temp.template slice(offsetU, extentUD).eval()
+                    .template broadcast(Eigen::array<Index, 3>{padHeight, 1, 1}).eval();
+
+            Eigen::array<Index, 3> offsetD = {height - 1, 0, 0};
+
+            Eigen::Tensor<Scalar, 3, Eigen::RowMajor> paddingD = \
+                temp.template slice(offsetD, extentUD).eval()
+                    .template broadcast(Eigen::array<Index, 3>{padHeight, 1, 1}).eval();
+
+            output.device(device) = \
+                paddingU.template concatenate(temp, 0).eval()
+                        .template concatenate(paddingD, 0);
+            // clang-format on
+        }
+    };
+
 } // namespace Image
