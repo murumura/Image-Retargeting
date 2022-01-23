@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <gtest/gtest.h>
+#include <image/filter.h>
 #include <image/image.h>
 #include <image/imageIO.h>
 #include <image/pad_op.h>
@@ -525,4 +526,58 @@ TEST(Image, padding_edge_with_image)
 
     // NOTE: uncomment following line to see the result!
     EXPECT_EQ(0, remove("./paddedPanda.png"));
+}
+TEST(Image, extract_image)
+{
+    Index KsizeW = 2;
+    Index KsizeH = 2;
+    Index Knum = 1;
+    Index H = 5;
+    Index W = 7;
+    Index D = 3;
+
+    Index OutH = (H - KsizeH) + 1; //(W−K+2P)/S]+1
+    Index OutW = (W - KsizeW) + 1; //(W−K+2P)/S]+1
+
+    Eigen::Tensor<float, 3, Eigen::RowMajor> kernel(KsizeH, KsizeW, Knum);
+
+    kernel.setRandom();
+    Eigen::Tensor<float, 3, Eigen::RowMajor> tensor(H, W, D);
+    tensor.setRandom();
+    Eigen::Tensor<float, 4, Eigen::RowMajor> patch = tensor.extract_image_patches(KsizeH, KsizeW, 1, 1, 1, 1, Eigen::PaddingType::PADDING_VALID);
+    std::cout << patch.dimension(0) << std::endl;
+    std::cout << patch.dimension(1) << std::endl;
+    std::cout << patch.dimension(2) << std::endl;
+    std::cout << patch.dimension(3) << std::endl;
+
+    Eigen::Tensor<float, 2, Eigen::RowMajor> reshape = patch.reshape(
+        Eigen::array<Index, 2>{OutH * OutW * D, KsizeH * KsizeW});
+
+    std::cout << std::endl;
+    std::cout << reshape.dimension(0) << std::endl;
+    std::cout << reshape.dimension(1) << std::endl;
+
+    Eigen::Tensor<float, 2, Eigen::RowMajor> kernel_reshape = kernel.reshape(Eigen::array<Index, 2>{KsizeH * KsizeW, Knum});
+    std::cout << std::endl;
+    std::cout << kernel_reshape.dimension(0) << std::endl;
+    std::cout << kernel_reshape.dimension(1) << std::endl;
+
+    Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {Eigen::IndexPair<int>(1, 0)};
+
+    Eigen::Tensor<float, 2, Eigen::RowMajor> result = reshape.contract(
+        kernel_reshape, product_dims);
+
+    std::cout << std::endl;
+    std::cout << result.dimension(0) << std::endl;
+    std::cout << result.dimension(1) << std::endl;
+    std::cout << std::endl;
+
+    Eigen::Tensor<float, 3, Eigen::RowMajor> conv_rgb = result.reshape(
+        Eigen::array<Index, 3>({OutH, OutW, D}));
+
+    std::cout << conv_rgb.dimension(0) << std::endl;
+    std::cout << conv_rgb.dimension(1) << std::endl;
+    std::cout << conv_rgb.dimension(2) << std::endl;
+
+    std::cout << conv_rgb << std::endl;
 }

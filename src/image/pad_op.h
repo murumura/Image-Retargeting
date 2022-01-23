@@ -1,3 +1,5 @@
+#ifndef PADOP_H
+#define PADOP_H
 #include <stdexcept>
 #include <string>
 
@@ -49,11 +51,12 @@ namespace Image {
     struct padReflect {
     private:
         int padWidth, padHeight;
+        Scalar padValue;
 
     public:
-        padReflect() : padWidth{0}, padHeight{0} {}
+        padReflect() : padValue{0}, padWidth{0}, padHeight{0} {}
 
-        padReflect(int padHeight_, int padWidth_) : padWidth{padWidth_}, padHeight{padHeight_} {}
+        padReflect(int padHeight_, int padWidth_, Scalar value = 0) : padWidth{padWidth_}, padHeight{padHeight_}, padValue{value} {}
 
         ImageDsizes dimensions(const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& image) const
         {
@@ -121,11 +124,11 @@ namespace Image {
     struct padEdge {
     private:
         int padWidth, padHeight;
-
+        Scalar padValue; ///< not used, for compatibility
     public:
-        padEdge() : padWidth{0}, padHeight{0} {}
+        padEdge() : padValue{0}, padWidth{0}, padHeight{0} {}
 
-        padEdge(int padHeight_, int padWidth_) : padWidth{padWidth_}, padHeight{padHeight_} {}
+        padEdge(int padHeight_, int padWidth_, Scalar value = 0) : padValue{value}, padWidth{padWidth_}, padHeight{padHeight_} {}
 
         ImageDsizes dimensions(const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& image) const
         {
@@ -224,3 +227,4 @@ namespace Image {
     };
 
 } // namespace Image
+#endif
