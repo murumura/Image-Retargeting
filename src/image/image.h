@@ -17,43 +17,6 @@ namespace Image {
     using Index = Eigen::DenseIndex;
     using ImageDsizes = Eigen::DSizes<Index, 3>;
 
-    template <typename Scalar>
-    struct rgbToGray {
-        ImageDsizes dimensions(const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& rgbImage) const
-        {
-            ImageDsizes dims = rgbImage.dimensions();
-            dims[0] = rgbImage.dimension(0);
-            dims[1] = rgbImage.dimension(1);
-            dims[2] = 1;
-            return dims;
-        }
-
-        template <typename Output, typename Device = Eigen::DefaultDevice>
-        void eval(
-            const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& rgbImage,
-            Output& output,
-            const Device& device) const
-        {
-            const Index height = rgbImage.dimension(0);
-            const Index width = rgbImage.dimension(1);
-            Eigen::array<Index, 3> offset = {height, width, 1};
-            // clang-format off
-            output =  (0.2126f * rgbImage.template cast<float>().slice(Eigen::array<Index, 3>{0, 0, 0}, offset) \
-                     + 0.7152f * rgbImage.template cast<float>().slice(Eigen::array<Index, 3>{0, 0, 1}, offset) \
-                     + 0.0722f * rgbImage.template cast<float>().slice(Eigen::array<Index, 3>{0, 0, 2}, offset)).template cast<Scalar>();
-            // clang-format on
-        }
-    };
-
-    // Functor used by rgbToGray to do the computations.
-    template <typename Scalar>
-    struct rgbToGrayFunctor {
-        auto operator()(const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& rgbImage)
-        {
-            return rgbImage.customOp(rgbToGray<Scalar>());
-        }
-    };
-
     template <typename TColorDepth, int Rank, typename Func>
     void forEachPixel(const Eigen::Tensor<TColorDepth, Rank, Eigen::RowMajor>& image, Func func)
     {

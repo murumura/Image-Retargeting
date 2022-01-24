@@ -1,9 +1,10 @@
 #include <cstdlib>
 #include <gtest/gtest.h>
+#include <image/colorspace_op.h>
 #include <image/filter.h>
 #include <image/image.h>
 #include <image/imageIO.h>
-#include <image/pad_op.h>
+#include <image/padding_op.h>
 #include <iostream>
 using namespace Image;
 using testing::Eq;
@@ -99,52 +100,60 @@ TEST(Image, rgb_to_gray)
 {
     Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(2, 2, 3);
     rgb.setConstant(0);
-    rgb(0, 0, 0) = 255;
-    rgb(0, 1, 0) = 255;
-    rgb(1, 0, 0) = 255;
-    rgb(1, 1, 0) = 255;
-    rgb(0, 0, 1) = 128;
-    rgb(0, 1, 1) = 128;
-    rgb(1, 0, 1) = 128;
-    rgb(1, 1, 1) = 128;
-    rgb(0, 0, 2) = 0;
-    rgb(0, 1, 2) = 0;
-    rgb(1, 0, 2) = 0;
-    rgb(1, 1, 2) = 0;
-    rgbToGrayFunctor<int> functor;
-    Eigen::Tensor<int, 3, Eigen::RowMajor> gray = functor(rgb);
+    rgb.setRandom();
+    Eigen::Tensor<int, 3, Eigen::RowMajor> gray;
+    Image::Functor::RGBToGray<int>()(rgb, gray);
     EXPECT_EQ(gray.dimension(0), 2);
     EXPECT_EQ(gray.dimension(1), 2);
     EXPECT_EQ(gray.dimension(2), 1);
 }
 
-TEST(Image, Panda)
+TEST(Image, rgb_to_hsv)
+{
+    Eigen::Tensor<float, 3, Eigen::RowMajor> rgb(2, 2, 3);
+    Eigen::Tensor<float, 3, Eigen::RowMajor> hsv(2, 2, 3);
+    Eigen::Tensor<float, 3, Eigen::RowMajor> rgb_from_hsv(2, 2, 3);
+    rgb.setRandom();
+    Image::Functor::RGBToHSV<float>()(rgb, hsv);
+    EXPECT_EQ(hsv.dimension(0), 2);
+    EXPECT_EQ(hsv.dimension(1), 2);
+    EXPECT_EQ(hsv.dimension(2), 3);
+
+    Image::Functor::HSVToRGB<float>()(hsv, rgb_from_hsv);
+    EXPECT_EQ(rgb_from_hsv.dimension(0), 2);
+    EXPECT_EQ(rgb_from_hsv.dimension(1), 2);
+    EXPECT_EQ(rgb_from_hsv.dimension(2), 3);
+    for (Index r = 0; r < rgb_from_hsv.dimension(0); r++)
+        for (Index c = 0; c < rgb_from_hsv.dimension(1); c++)
+            for (Index d = 0; d < rgb_from_hsv.dimension(2); d++)
+                EXPECT_NEAR(rgb_from_hsv(r, c, d), rgb(r, c, d), 1e-6);
+}
+
+TEST(Image, Panda_to_gray)
 {
     Uint8Image pandaRGB = loadPNG<uint8_t>("./test/test_image/panda.png", 3);
     EXPECT_EQ(pandaRGB.dimension(0), 800);
     EXPECT_EQ(pandaRGB.dimension(1), 600);
     EXPECT_EQ(pandaRGB.dimension(2), 3);
-
-    rgbToGrayFunctor<uint8_t> functor;
-    Uint8Image pandaGray = functor(pandaRGB);
+    Uint8Image pandaGray;
+    Image::Functor::RGBToGray<uint8_t>()(pandaRGB, pandaGray);
 
     EXPECT_EQ(pandaGray.dimension(0), 800);
     EXPECT_EQ(pandaGray.dimension(1), 600);
     EXPECT_EQ(pandaGray.dimension(2), 1);
 
-    savePNG("./lenaPanda", pandaGray);
-    EXPECT_EQ(0, remove("./lenaPanda.png"));
+    savePNG("./PandaGray", pandaGray);
+    EXPECT_EQ(0, remove("./PandaGray.png"));
 }
 
-TEST(Image, Lena)
+TEST(Image, Lena_to_gray)
 {
     Uint8Image lenaRGB = loadPNG<uint8_t>("./test/test_image/lena256.png", 3);
     EXPECT_EQ(lenaRGB.dimension(0), 256);
     EXPECT_EQ(lenaRGB.dimension(1), 256);
     EXPECT_EQ(lenaRGB.dimension(2), 3);
-
-    rgbToGrayFunctor<uint8_t> functor;
-    Uint8Image lenaGray = functor(lenaRGB);
+    Uint8Image lenaGray;
+    Image::Functor::RGBToGray<uint8_t>()(lenaRGB, lenaGray);
     EXPECT_EQ(lenaGray.dimension(0), 256);
     EXPECT_EQ(lenaGray.dimension(1), 256);
     EXPECT_EQ(lenaGray.dimension(2), 1);
@@ -527,6 +536,7 @@ TEST(Image, padding_edge_with_image)
     // NOTE: uncomment following line to see the result!
     EXPECT_EQ(0, remove("./paddedPanda.png"));
 }
+
 TEST(Image, extract_image)
 {
     Index KsizeW = 2;

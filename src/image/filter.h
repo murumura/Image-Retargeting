@@ -1,7 +1,7 @@
 #ifndef FILTER_H
 #define FILTER_H
 #include <image/image.h>
-#include <image/pad_op.h>
+#include <image/padding_op.h>
 namespace Image {
     template <typename InputScalar, typename Kernel, PadMode Mode>
     Eigen::Tensor<InputScalar, 3, Eigen::RowMajor>
