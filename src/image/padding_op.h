@@ -2,13 +2,14 @@
 #define PADOP_H
 #include <stdexcept>
 #include <string>
-
+#include <variant>
 namespace Image {
 
     enum class PadMode {
         CONSTANT = 0, // pad constant values, with string "constant"
         REFLECT = 1, // pads with reflect values, with string "reflect"
-        EDGE = 2, // pads with the edge values, with string "edge"
+        SYMMETRIC = 2,
+        EDGE = 3, // pads with the edge values, with string "edge"
     };
 
     /* C C |3 1 2| C C */
@@ -188,43 +189,116 @@ namespace Image {
         }
     };
 
-    template <typename Scalar, PadMode Mode>
-    struct paddingTrait {
-    };
+    namespace Functor {
 
-    template <typename Scalar>
-    struct paddingTrait<Scalar, PadMode::CONSTANT> {
-        using type = padConstant<Scalar>;
-    };
+        // offset argument must be either 0 or 1. This controls whether the boundary
+        // values are replicated (offset == 0)(symmetric) or not replicated (offset == 1)(reflect).
+        template <typename T, typename Device = Eigen::DefaultDevice>
+        struct MirrorPad {
+            void operator()(
+                const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& input,
+                Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& output,
+                const Eigen::Tensor<Index, 2, Eigen::RowMajor> paddings, int offset,
+                const Device& device = Eigen::DefaultDevice())
+            {
 
-    template <typename Scalar>
-    struct paddingTrait<Scalar, PadMode::REFLECT> {
-        using type = padReflect<Scalar>;
-    };
+                Index pad_l = paddings(1, 0);
+                Index pad_r = paddings(1, 1);
+                Index pad_t = paddings(0, 0);
+                Index pad_d = paddings(0, 1);
 
-    template <typename Scalar>
-    struct paddingTrait<Scalar, PadMode::EDGE> {
-        using type = padEdge<Scalar>;
-    };
+                Index outH = output.dimension(0);
+                Index outW = output.dimension(1);
+                Index inH = input.dimension(0);
+                Index inW = input.dimension(1);
 
-    template <typename Scalar, PadMode Mode>
-    struct PadImageOp {
+                Eigen::array<int32, 3> l_RhsOffsets = {pad_l + offset, pad_t, 0};
+                Eigen::array<int32, 3> l_LhsOffsets = {pad_l, , 0};
+                Eigen::array<int32, 3> rOffsets = {};
+                Eigen::array<int32, 3> tdOffsets = {};
+                Eigen::array<int32, 3> lrExtents ={0, inW, 3};
+                Eigen::array<int32, 3> tdExtents ={};
+                Eigen::array<bool, 3> lrReverse = {false, true, false};
+                Eigen::array<bool, 3> tdReverse = {true, false, false};
+
+                
+                // populate input from top-left output
+                output.template slice(
+                    Eigen::array<Index, 3>{pad_t, pad_l, 0}, 
+                    Eigne::array<Index, 3>{inH, inW, 3}
+                ).device(device) = input;
+                /*
+                    padding strategy:
+                    start from top-down
+                        if reflect(offset=1):
+                            (1) padding reverse of input from (offset, 0, 0) extend (pT, W, 3) to output's (0, pL, 0) extend (pT, W, 3)
+                            (2) padding reverse of input from (H - pD - offset, 0, 0) extend (pD, W, 3) to output's (outH - pD, pL, 0) extend (pD, W, 3)
+                            (3) [check pR > 0] padding reverse of output from (0, pL+offset, 0) extend (pL, outH, 3) to output's (0, 0, 0) extend (pR, outH, 3)
+                            (4) [check pR > 0] padding reverse of output from (0, outW - 2 * pR - offset, 0) extend (pR, outH, 3) to output's (outH - pR, 0, 0) extend (pR 
+               */
+               
+               
+                
+            }
+        };
+    } // namespace Functor
+
+    template <typename Scalar, typename Device = Eigen::DefaultDevice>
+    class PaddingImageOp final {
     public:
-        using PadType = typename paddingTrait<Scalar, Mode>::type;
-
-        template <typename... Args>
-        explicit PadImageOp(Args&&... args) : padder(std::forward<Args>(args)...)
+        explicit PaddingImageOp(std::string_view padMode, int offset_ = -1)
         {
+            switch (padMode) {
+            case "symmetric": {
+                mode = PadMode::SYMMETRIC;
+                offset = 0;
+                break;
+            }
+            case "reflect": {
+                mode = PadMode::REFLECT;
+                offset = 1;
+                break;
+            }
+            case "edge": {
+                mode = PadMode::EDGE;
+                offset = 0;
+            }
+            case "constant": {
+                mode = PadMode::CONSTANT:
+            }
+            default:
+                throw std::invalid_argument("Invalid padding mode" + padMode);
+            }
         }
 
-        auto operator()(const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& image)
+        ~PaddingImageOp() = default;
+
+        void operator()(
+            const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& input,
+            Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& output,
+            int pL, int pR, int pT, int pD,
+            const Device& device = Eigen::DefaultDevice()) const
         {
-            return image.customOp(padder);
+            // Compute the shape of the output tensor, and allocate it.
+            ImageDsizes outputShape;
+            Eigen::Tensor<Index, 2, Eigen::RowMajor> paddings(2, 2);
+            paddings(0, 0) = pL;
+            paddings(0, 1) = pR;
+            paddings(1, 0) = pT;
+            paddings(1, 1) = pD;
+            output.resize(input.dimensions()[0] + pL + pR, input.dimensions()[1] + pT + pD, 3);
+            if (mode == PadMode::CONSTANT) {
+
+            }
+            else {
+            }
         }
 
     private:
-        PadType padder;
-    };
+        int offset;
+        PadMode mode;
+    }
+}; // namespace Image
 
 } // namespace Image
 #endif
