@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 set(RESIZING_TEST_SOURCE
     ${CMAKE_SOURCE_DIR}/test/main.cpp
     ${CMAKE_SOURCE_DIR}/test/test_image.cpp
+    ${CMAKE_SOURCE_DIR}/test/test_padding.cpp
 )
 
 add_executable(resizing_test

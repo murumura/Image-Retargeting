@@ -25,6 +25,22 @@ namespace Image {
                 for (Index r = 0; r < image.dimension(0); ++r)
                     func(image(r, c, d));
     }
+
+    namespace Functor {
+
+        template <typename SrcType, typename DstType, typename Device = Eigen::DefaultDevice>
+        struct CastFunctor {
+            void operator()(
+                Eigen::Tensor<SrcType, 3> inTensor,
+                Eigen::Tensor<DstType, 3> outTensor,
+                const Device& device = Eigen::DefaultDevice()) const
+            {
+                outTensor.device(device) = inTensor.template cast<DstType>();
+            }
+        };
+
+    } // namespace Functor
+
 } // namespace Image
 
 #endif

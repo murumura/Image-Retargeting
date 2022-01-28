@@ -4,8 +4,8 @@
 #include <image/filter.h>
 #include <image/image.h>
 #include <image/imageIO.h>
-#include <image/padding_op.h>
 #include <iostream>
+
 using namespace Image;
 using testing::Eq;
 
@@ -162,432 +162,134 @@ TEST(Image, Lena_to_gray)
     EXPECT_EQ(0, remove("./lenaGray.png"));
 }
 
-TEST(Image, image_const_padding)
+TEST(Image, image_padder)
 {
-    const int H = 41;
-    const int W = 7;
+    const int H = 800;
+    const int W = 600;
     const int D = 3;
-    const int pH = 1;
-    const int pW = 2;
-    const int padVal = -2;
-    Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(H, W, D);
-    rgb.setConstant(10);
-    Eigen::Tensor<int, 3, Eigen::RowMajor> paddedRGB = rgb.customOp(padConstant<int>(pH, pW, padVal));
-
-    EXPECT_EQ(paddedRGB.dimension(0), H + pH * 2);
-    EXPECT_EQ(paddedRGB.dimension(1), W + pW * 2);
-    EXPECT_EQ(paddedRGB.dimension(2), D);
-    const int newH = H + 2 * pH;
-    const int newW = W + 2 * pW;
-    // check padding equal
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padU = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{0, 0, 0}, Eigen::array<Index, D>{pH, newW, D});
-
-    EXPECT_EQ(pH, padU.dimension(0));
-    EXPECT_EQ(newW, padU.dimension(1));
-    EXPECT_EQ(D, padU.dimension(2));
-
-    for (Index r = 0; r < padU.dimension(0); r++)
-        for (Index c = 0; c < padU.dimension(1); c++)
-            for (Index d = 0; d < padU.dimension(2); d++)
-                EXPECT_EQ(padU(r, c, d), padVal);
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padD = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{newH - pH, 0, 0}, Eigen::array<Index, D>{pH, newW, D});
-
-    EXPECT_EQ(pH, padD.dimension(0));
-    EXPECT_EQ(newW, padD.dimension(1));
-    EXPECT_EQ(D, padD.dimension(2));
-
-    for (Index r = 0; r < padD.dimension(0); r++)
-        for (Index c = 0; c < padD.dimension(1); c++)
-            for (Index d = 0; d < padD.dimension(2); d++)
-                EXPECT_EQ(padD(r, c, d), padVal);
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padL = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{0, 0, 0}, Eigen::array<Index, D>{newH, pW, D});
-
-    EXPECT_EQ(newH, padL.dimension(0));
-    EXPECT_EQ(pW, padL.dimension(1));
-    EXPECT_EQ(D, padL.dimension(2));
-
-    for (Index r = 0; r < padL.dimension(0); r++)
-        for (Index c = 0; c < padL.dimension(1); c++)
-            for (Index d = 0; d < padL.dimension(2); d++)
-                EXPECT_EQ(padL(r, c, d), padVal);
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padR = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{0, newW - pW, 0}, Eigen::array<Index, D>{newH, pW, D});
-
-    EXPECT_EQ(newH, padR.dimension(0));
-    EXPECT_EQ(pW, padR.dimension(1));
-    EXPECT_EQ(D, padR.dimension(2));
-
-    for (Index r = 0; r < padR.dimension(0); r++)
-        for (Index c = 0; c < padR.dimension(1); c++)
-            for (Index d = 0; d < padR.dimension(2); d++)
-                EXPECT_EQ(padR(r, c, d), padVal);
-}
-
-TEST(Image, reflect_padding)
-{
-    const int H = 41;
-    const int W = 7;
-    const int D = 3;
-    Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(H, W, D);
-    rgb.setRandom();
-    int pH = 3;
-    int pW = 4;
-    Eigen::Tensor<int, 3, Eigen::RowMajor> paddedRGB = rgb.customOp(padReflect<int>(pH, pW));
-
-    EXPECT_EQ(paddedRGB.dimension(0), H + 2 * pH);
-    EXPECT_EQ(paddedRGB.dimension(1), W + 2 * pW);
-    EXPECT_EQ(paddedRGB.dimension(2), D);
-
-    const int newH = H + 2 * pH;
-    const int newW = W + 2 * pW;
-
-    // check padding equal
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padU = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{0, pW, 0}, Eigen::array<Index, D>{pH, W, D})
-                                                      .reverse(Eigen::array<Index, D>{true, false, false});
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padUGt = rgb.slice(Eigen::array<Index, D>{1, 0, 0}, Eigen::array<Index, D>{pH, W, D});
-
-    EXPECT_EQ(padUGt.dimension(0), padU.dimension(0));
-    EXPECT_EQ(padUGt.dimension(1), padU.dimension(1));
-    EXPECT_EQ(padUGt.dimension(2), padU.dimension(2));
-
-    for (Index r = 0; r < padU.dimension(0); r++)
-        for (Index c = 0; c < padU.dimension(1); c++)
-            for (Index d = 0; d < padU.dimension(2); d++)
-                EXPECT_EQ(padU(r, c, d), padUGt(r, c, d));
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padD = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{newH - pH, pW, 0}, Eigen::array<Index, D>{pH, W, D})
-                                                      .reverse(Eigen::array<Index, D>{true, false, false});
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padDGt = rgb.slice(Eigen::array<Index, D>{H - pH - 1, 0, 0}, Eigen::array<Index, D>{pH, W, D});
-
-    EXPECT_EQ(padDGt.dimension(0), padD.dimension(0));
-    EXPECT_EQ(padDGt.dimension(1), padD.dimension(1));
-    EXPECT_EQ(padDGt.dimension(2), padD.dimension(2));
-
-    for (Index r = 0; r < padD.dimension(0); r++)
-        for (Index c = 0; c < padD.dimension(1); c++)
-            for (Index d = 0; d < padD.dimension(2); d++)
-                EXPECT_EQ(padD(r, c, d), padDGt(r, c, d));
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padL = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{pH, 0, 0}, Eigen::array<Index, D>{H, pW, D})
-                                                      .reverse(Eigen::array<Index, D>{false, true, false});
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padLGt = rgb.slice(Eigen::array<Index, D>{0, 1, 0}, Eigen::array<Index, D>{H, pW, D});
-
-    EXPECT_EQ(padLGt.dimension(0), padL.dimension(0));
-    EXPECT_EQ(padLGt.dimension(1), padL.dimension(1));
-    EXPECT_EQ(padLGt.dimension(2), padL.dimension(2));
-
-    for (Index r = 0; r < padL.dimension(0); r++)
-        for (Index c = 0; c < padL.dimension(1); c++)
-            for (Index d = 0; d < padL.dimension(2); d++)
-                EXPECT_EQ(padL(r, c, d), padLGt(r, c, d));
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padR = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{pH, newW - pW, 0}, Eigen::array<Index, D>{H, pW, D})
-                                                      .reverse(Eigen::array<Index, D>{false, true, false});
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padRGt = rgb.slice(Eigen::array<Index, D>{0, W - pW - 1, 0}, Eigen::array<Index, D>{H, pW, D});
-
-    EXPECT_EQ(padRGt.dimension(0), padR.dimension(0));
-    EXPECT_EQ(padRGt.dimension(1), padR.dimension(1));
-    EXPECT_EQ(padRGt.dimension(2), padR.dimension(2));
-
-    for (Index r = 0; r < padR.dimension(0); r++)
-        for (Index c = 0; c < padR.dimension(1); c++)
-            for (Index d = 0; d < padR.dimension(2); d++)
-                EXPECT_EQ(padR(r, c, d), padRGt(r, c, d));
-}
-
-TEST(Image, edge_padding)
-{
-    const int H = 41;
-    const int W = 14;
-    const int D = 3;
-    Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(H, W, D);
-    rgb.setRandom();
-    int pH = 3;
-    int pW = 2;
-    Eigen::Tensor<int, 3, Eigen::RowMajor> paddedRGB = rgb.customOp(padEdge<int>(pH, pW));
-
-    EXPECT_EQ(paddedRGB.dimension(0), H + 2 * pH);
-    EXPECT_EQ(paddedRGB.dimension(1), W + 2 * pW);
-    EXPECT_EQ(paddedRGB.dimension(2), D);
-
-    const int newH = H + 2 * pH;
-    const int newW = W + 2 * pW;
-
-    // check padding equal
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padU = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{0, pW, 0}, Eigen::array<Index, D>{pH, W, D});
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padUGt = rgb.slice(Eigen::array<Index, D>{0, 0, 0}, Eigen::array<Index, D>{1, W, D})
-                                                        .broadcast(Eigen::array<Index, 3>{pH, 1, 1});
-
-    EXPECT_EQ(padUGt.dimension(0), padU.dimension(0));
-    EXPECT_EQ(padUGt.dimension(1), padU.dimension(1));
-    EXPECT_EQ(padUGt.dimension(2), padU.dimension(2));
-
-    for (Index r = 0; r < padU.dimension(0); r++)
-        for (Index c = 0; c < padU.dimension(1); c++)
-            for (Index d = 0; d < padU.dimension(2); d++)
-                EXPECT_EQ(padU(r, c, d), padUGt(r, c, d));
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padD = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{newH - pH, pW, 0}, Eigen::array<Index, D>{pH, W, D});
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padDGt = rgb.slice(Eigen::array<Index, D>{H - 1, 0, 0}, Eigen::array<Index, D>{1, W, D})
-                                                        .broadcast(Eigen::array<Index, 3>{pH, 1, 1});
-
-    EXPECT_EQ(padDGt.dimension(0), padD.dimension(0));
-    EXPECT_EQ(padDGt.dimension(1), padD.dimension(1));
-    EXPECT_EQ(padDGt.dimension(2), padD.dimension(2));
-
-    for (Index r = 0; r < padD.dimension(0); r++)
-        for (Index c = 0; c < padD.dimension(1); c++)
-            for (Index d = 0; d < padD.dimension(2); d++)
-                EXPECT_EQ(padD(r, c, d), padDGt(r, c, d));
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padL = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{pH, 0, 0}, Eigen::array<Index, D>{H, pW, D});
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padLGt = rgb.slice(Eigen::array<Index, D>{0, 0, 0}, Eigen::array<Index, D>{H, 1, D})
-                                                        .broadcast(Eigen::array<Index, 3>{1, pW, 1});
-
-    EXPECT_EQ(padLGt.dimension(0), padL.dimension(0));
-    EXPECT_EQ(padLGt.dimension(1), padL.dimension(1));
-    EXPECT_EQ(padLGt.dimension(2), padL.dimension(2));
-
-    for (Index r = 0; r < padL.dimension(0); r++)
-        for (Index c = 0; c < padL.dimension(1); c++)
-            for (Index d = 0; d < padL.dimension(2); d++)
-                EXPECT_EQ(padL(r, c, d), padLGt(r, c, d));
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padR = \ 
-        paddedRGB.slice(Eigen::array<Index, D>{pH, newW - pW, 0}, Eigen::array<Index, D>{H, pW, D});
-
-    Eigen::Tensor<int, 3, Eigen::RowMajor> padRGt = rgb.slice(Eigen::array<Index, D>{0, W - 1, 0}, Eigen::array<Index, D>{H, 1, D})
-                                                        .broadcast(Eigen::array<Index, 3>{1, pW, 1});
-
-    EXPECT_EQ(padRGt.dimension(0), padR.dimension(0));
-    EXPECT_EQ(padRGt.dimension(1), padR.dimension(1));
-    EXPECT_EQ(padRGt.dimension(2), padR.dimension(2));
-
-    for (Index r = 0; r < padR.dimension(0); r++)
-        for (Index c = 0; c < padR.dimension(1); c++)
-            for (Index d = 0; d < padR.dimension(2); d++)
-                EXPECT_EQ(padR(r, c, d), padRGt(r, c, d));
-}
-
-TEST(Image, padding_constant_functor)
-{
-    const int H = 41;
-    const int W = 14;
-    const int D = 3;
-    Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(H, W, D);
-    rgb.setRandom();
-    int pH = 3;
-    int pW = 2;
-    const int padVal = -2;
-    PadImageOp padOp = PadImageOp<int, PadMode::CONSTANT>(pH, pW, padVal);
-    Eigen::Tensor<int, 3, Eigen::RowMajor> paddedRGB = padOp(rgb);
-    EXPECT_EQ(paddedRGB.dimension(0), H + pH * 2);
-    EXPECT_EQ(paddedRGB.dimension(1), W + pW * 2);
-    EXPECT_EQ(paddedRGB.dimension(2), D);
-    Eigen::Tensor<int, 3, Eigen::RowMajor> constantPaddedRGB = rgb.customOp(padConstant<int>(pH, pW, padVal));
-    EXPECT_EQ(constantPaddedRGB.dimension(0), H + pH * 2);
-    EXPECT_EQ(constantPaddedRGB.dimension(1), W + pW * 2);
-    EXPECT_EQ(constantPaddedRGB.dimension(2), D);
-    const int newH = H + 2 * pH;
-    const int newW = W + 2 * pW;
-    for (Index r = 0; r < paddedRGB.dimension(0); r++)
-        for (Index c = 0; c < paddedRGB.dimension(1); c++)
-            for (Index d = 0; d < paddedRGB.dimension(2); d++)
-                EXPECT_EQ(paddedRGB(r, c, d), constantPaddedRGB(r, c, d));
-}
-
-TEST(Image, padding_refect_functor)
-{
-    const int H = 41;
-    const int W = 14;
-    const int D = 3;
-    Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(H, W, D);
-    rgb.setRandom();
-    int pH = 3;
-    int pW = 2;
-    PadImageOp padOp = PadImageOp<int, PadMode::REFLECT>(pH, pW);
-    Eigen::Tensor<int, 3, Eigen::RowMajor> paddedRGB = padOp(rgb);
-    EXPECT_EQ(paddedRGB.dimension(0), H + pH * 2);
-    EXPECT_EQ(paddedRGB.dimension(1), W + pW * 2);
-    EXPECT_EQ(paddedRGB.dimension(2), D);
-    Eigen::Tensor<int, 3, Eigen::RowMajor> reflectPaddedRGB = rgb.customOp(padReflect<int>(pH, pW));
-    EXPECT_EQ(reflectPaddedRGB.dimension(0), H + pH * 2);
-    EXPECT_EQ(reflectPaddedRGB.dimension(1), W + pW * 2);
-    EXPECT_EQ(reflectPaddedRGB.dimension(2), D);
-    const int newH = H + 2 * pH;
-    const int newW = W + 2 * pW;
-    for (Index r = 0; r < paddedRGB.dimension(0); r++)
-        for (Index c = 0; c < paddedRGB.dimension(1); c++)
-            for (Index d = 0; d < paddedRGB.dimension(2); d++)
-                EXPECT_EQ(paddedRGB(r, c, d), reflectPaddedRGB(r, c, d));
-}
-
-TEST(Image, padding_edge_functor)
-{
-    const int H = 41;
-    const int W = 14;
-    const int D = 3;
-    Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(H, W, D);
-    rgb.setRandom();
-    int pH = 3;
-    int pW = 2;
-    PadImageOp padOp = PadImageOp<int, PadMode::EDGE>(pH, pW);
-    Eigen::Tensor<int, 3, Eigen::RowMajor> paddedRGB = padOp(rgb);
-    EXPECT_EQ(paddedRGB.dimension(0), H + pH * 2);
-    EXPECT_EQ(paddedRGB.dimension(1), W + pW * 2);
-    EXPECT_EQ(paddedRGB.dimension(2), D);
-    Eigen::Tensor<int, 3, Eigen::RowMajor> edgePaddedRGB = rgb.customOp(padEdge<int>(pH, pW));
-    EXPECT_EQ(edgePaddedRGB.dimension(0), H + pH * 2);
-    EXPECT_EQ(edgePaddedRGB.dimension(1), W + pW * 2);
-    EXPECT_EQ(edgePaddedRGB.dimension(2), D);
-    const int newH = H + 2 * pH;
-    const int newW = W + 2 * pW;
-    for (Index r = 0; r < paddedRGB.dimension(0); r++)
-        for (Index c = 0; c < paddedRGB.dimension(1); c++)
-            for (Index d = 0; d < paddedRGB.dimension(2); d++)
-                EXPECT_EQ(paddedRGB(r, c, d), edgePaddedRGB(r, c, d));
-}
-
-TEST(Image, padding_constant_with_image)
-{
-    Uint8Image pandaRGB = loadPNG<uint8_t>("./test/test_image/panda.png", 3);
+    const int pL = 18;
+    const int pR = 27;
+    const int pT = 16;
+    const int pD = 7;
+    const int outH = H + pD + pT;
+    const int outW = W + pL + pR;
+    auto paddingOp = PaddingImageOp<uint8_t>("reflect");
+    Uint8Image pandaRGB = loadPNG<uint8_t>("./test/test_image/panda.png", D);
     EXPECT_EQ(pandaRGB.dimension(0), 800);
     EXPECT_EQ(pandaRGB.dimension(1), 600);
     EXPECT_EQ(pandaRGB.dimension(2), 3);
 
-    int pH = 100;
-    int pW = 10;
-    const int padVal = 0;
-    PadImageOp padOp = PadImageOp<uint8_t, PadMode::CONSTANT>(pH, pW, padVal);
-    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> paddedPanda = padOp(pandaRGB);
-
-    EXPECT_EQ(paddedPanda.dimension(0), 800 + pH * 2);
-    EXPECT_EQ(paddedPanda.dimension(1), 600 + pW * 2);
-    EXPECT_EQ(paddedPanda.dimension(2), 3);
-
-    savePNG("./paddedPanda", paddedPanda);
-
-    // NOTE: uncomment following line to see the result!
-    EXPECT_EQ(0, remove("./paddedPanda.png"));
+    Uint8Image paddedPandaRGB;
+    paddingOp(pandaRGB, paddedPandaRGB, std::make_tuple(pT, pD), std::make_tuple(pL, pR));
+    savePNG("./paddedPandaRGB", paddedPandaRGB);
+    EXPECT_EQ(0, remove("./paddedPandaRGB.png"));
 }
 
-TEST(Image, padding_reflect_with_image)
+TEST(Image, random_filter)
 {
-    Uint8Image pandaRGB = loadPNG<uint8_t>("./test/test_image/panda.png", 3);
-    EXPECT_EQ(pandaRGB.dimension(0), 800);
-    EXPECT_EQ(pandaRGB.dimension(1), 600);
-    EXPECT_EQ(pandaRGB.dimension(2), 3);
+    const int H = 800;
+    const int W = 600;
+    const int D = 3;
+    Uint8Image pandaRGB = loadPNG<uint8_t>("./test/test_image/panda.png", D);
 
-    int pH = 100;
-    int pW = 10;
-    const int padVal = 0;
-    PadImageOp padOp = PadImageOp<uint8_t, PadMode::REFLECT>(pH, pW);
-    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> paddedPanda = padOp(pandaRGB);
-
-    EXPECT_EQ(paddedPanda.dimension(0), 800 + pH * 2);
-    EXPECT_EQ(paddedPanda.dimension(1), 600 + pW * 2);
-    EXPECT_EQ(paddedPanda.dimension(2), 3);
-
-    savePNG("./paddedPanda", paddedPanda);
-
-    // NOTE: uncomment following line to see the result!
-    EXPECT_EQ(0, remove("./paddedPanda.png"));
-}
-
-TEST(Image, padding_edge_with_image)
-{
-    Uint8Image pandaRGB = loadPNG<uint8_t>("./test/test_image/panda.png", 3);
-    EXPECT_EQ(pandaRGB.dimension(0), 800);
-    EXPECT_EQ(pandaRGB.dimension(1), 600);
-    EXPECT_EQ(pandaRGB.dimension(2), 3);
-
-    int pH = 100;
-    int pW = 50;
-    const int padVal = 0;
-    PadImageOp padOp = PadImageOp<uint8_t, PadMode::EDGE>(pH, pW);
-    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> paddedPanda = padOp(pandaRGB);
-
-    EXPECT_EQ(paddedPanda.dimension(0), 800 + pH * 2);
-    EXPECT_EQ(paddedPanda.dimension(1), 600 + pW * 2);
-    EXPECT_EQ(paddedPanda.dimension(2), 3);
-
-    savePNG("./paddedPanda", paddedPanda);
-
-    // NOTE: uncomment following line to see the result!
-    EXPECT_EQ(0, remove("./paddedPanda.png"));
-}
-
-TEST(Image, extract_image)
-{
-    Index KsizeW = 2;
-    Index KsizeH = 2;
+    Index KsizeW = 5;
+    Index KsizeH = 5;
     Index Knum = 1;
-    Index H = 5;
-    Index W = 7;
-    Index D = 3;
-
-    Index OutH = (H - KsizeH) + 1; //(W−K+2P)/S]+1
-    Index OutW = (W - KsizeW) + 1; //(W−K+2P)/S]+1
-
     Eigen::Tensor<float, 3, Eigen::RowMajor> kernel(KsizeH, KsizeW, Knum);
-
     kernel.setRandom();
-    Eigen::Tensor<float, 3, Eigen::RowMajor> tensor(H, W, D);
-    tensor.setRandom();
-    Eigen::Tensor<float, 4, Eigen::RowMajor> patch = tensor.extract_image_patches(KsizeH, KsizeW, 1, 1, 1, 1, Eigen::PaddingType::PADDING_VALID);
-    std::cout << patch.dimension(0) << std::endl;
-    std::cout << patch.dimension(1) << std::endl;
-    std::cout << patch.dimension(2) << std::endl;
-    std::cout << patch.dimension(3) << std::endl;
 
-    Eigen::Tensor<float, 2, Eigen::RowMajor> reshape = patch.reshape(
-        Eigen::array<Index, 2>{OutH * OutW * D, KsizeH * KsizeW});
+    auto KPandaRGB = imageConvolution(pandaRGB, kernel, "reflect");
+    EXPECT_EQ(KPandaRGB.dimension(0), H);
+    EXPECT_EQ(KPandaRGB.dimension(1), W);
+    EXPECT_EQ(KPandaRGB.dimension(2), D);
+    savePNG("./KPandaRGB", KPandaRGB);
+    EXPECT_EQ(0, remove("./KPandaRGB.png"));
+}
 
-    std::cout << std::endl;
-    std::cout << reshape.dimension(0) << std::endl;
-    std::cout << reshape.dimension(1) << std::endl;
+TEST(Image, convolution)
+{
+    uint32_t runIter = 36;
+    const int HWmin = 50;
+    const int HWmax = 500;
+    const int Kmax = 10;
+    const int Kmin = 1;
+    for (uint32_t i = 0; i < runIter; ++i) {
+        const int H = randomValue<int>(HWmin, HWmax);
+        const int W = randomValue<int>(HWmin, HWmax);
+        const int D = randomValue<int>(1, 3);
+        const int kH = randomValue<int>(Kmin, Kmax);
+        const int kW = randomValue<int>(Kmin, Kmax);
+        Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(H, W, D);
+        rgb.setRandom();
+        Eigen::Tensor<float, 3, Eigen::RowMajor> kernel(kH, kW, 1);
+        kernel.setRandom();
+        auto output = imageConvolution(rgb, kernel, "reflect");
+        EXPECT_EQ(output.dimension(0), H);
+        EXPECT_EQ(output.dimension(1), W);
+        EXPECT_EQ(output.dimension(2), D);
+    }
 
-    Eigen::Tensor<float, 2, Eigen::RowMajor> kernel_reshape = kernel.reshape(Eigen::array<Index, 2>{KsizeH * KsizeW, Knum});
-    std::cout << std::endl;
-    std::cout << kernel_reshape.dimension(0) << std::endl;
-    std::cout << kernel_reshape.dimension(1) << std::endl;
+    for (uint32_t i = 0; i < runIter; ++i) {
+        const int H = randomValue<int>(HWmin, HWmax);
+        const int W = randomValue<int>(HWmin, HWmax);
+        const int D = randomValue<int>(1, 3);
+        const int kH = randomValue<int>(Kmin, Kmax);
+        const int kW = randomValue<int>(Kmin, Kmax);
+        Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(H, W, D);
+        rgb.setRandom();
+        Eigen::Tensor<float, 3, Eigen::RowMajor> kernel(kH, kW, 1);
+        kernel.setRandom();
+        auto output = imageConvolution(rgb, kernel, "symmetric");
+        EXPECT_EQ(output.dimension(0), H);
+        EXPECT_EQ(output.dimension(1), W);
+        EXPECT_EQ(output.dimension(2), D);
+    }
 
-    Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {Eigen::IndexPair<int>(1, 0)};
+    for (uint32_t i = 0; i < runIter; ++i) {
+        const int H = randomValue<int>(HWmin, HWmax);
+        const int W = randomValue<int>(HWmin, HWmax);
+        const int D = randomValue<int>(1, 3);
+        const int kH = randomValue<int>(Kmin, Kmax);
+        const int kW = randomValue<int>(Kmin, Kmax);
+        Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(H, W, D);
+        rgb.setRandom();
+        Eigen::Tensor<float, 3, Eigen::RowMajor> kernel(kH, kW, 1);
+        kernel.setRandom();
+        auto output = imageConvolution(rgb, kernel, "constant");
+        EXPECT_EQ(output.dimension(0), H);
+        EXPECT_EQ(output.dimension(1), W);
+        EXPECT_EQ(output.dimension(2), D);
+    }
 
-    Eigen::Tensor<float, 2, Eigen::RowMajor> result = reshape.contract(
-        kernel_reshape, product_dims);
+    for (uint32_t i = 0; i < runIter; ++i) {
+        const int H = randomValue<int>(HWmin, HWmax);
+        const int W = randomValue<int>(HWmin, HWmax);
+        const int D = randomValue<int>(1, 3);
+        const int kH = randomValue<int>(Kmin, Kmax);
+        const int kW = randomValue<int>(Kmin, Kmax);
+        Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(H, W, D);
+        rgb.setRandom();
+        Eigen::Tensor<float, 3, Eigen::RowMajor> kernel(kH, kW, 1);
+        kernel.setRandom();
+        auto output = imageConvolution(rgb, kernel, "edge");
+        EXPECT_EQ(output.dimension(0), H);
+        EXPECT_EQ(output.dimension(1), W);
+        EXPECT_EQ(output.dimension(2), D);
+    }
+}
 
-    std::cout << std::endl;
-    std::cout << result.dimension(0) << std::endl;
-    std::cout << result.dimension(1) << std::endl;
-    std::cout << std::endl;
-
-    Eigen::Tensor<float, 3, Eigen::RowMajor> conv_rgb = result.reshape(
-        Eigen::array<Index, 3>({OutH, OutW, D}));
-
-    std::cout << conv_rgb.dimension(0) << std::endl;
-    std::cout << conv_rgb.dimension(1) << std::endl;
-    std::cout << conv_rgb.dimension(2) << std::endl;
-
-    std::cout << conv_rgb << std::endl;
+TEST(Image, gaussian_kernel)
+{
+    const int H = 40;
+    const int W = 40;
+    const int D = 3;
+    auto gaussianKernel = create("gaussian", "reflect");
+    Eigen::Tensor<int, 3, Eigen::RowMajor> rgb(H, W, D);
+    rgb.setRandom();
+    auto random = imageConvolution(rgb, gaussianKernel->getKernel(), gaussianKernel->getPaddingMode());
+    EXPECT_EQ(random.dimension(0), H);
+    EXPECT_EQ(random.dimension(1), W);
+    EXPECT_EQ(random.dimension(2), D);
+    savePNG("./Random", random);
+    EXPECT_EQ(0, remove("./Random.png"));
 }

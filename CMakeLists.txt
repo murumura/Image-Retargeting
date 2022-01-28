@@ -43,6 +43,7 @@ set (RESIZING_HEADER
     ${CMAKE_SOURCE_DIR}/src/image/padding_op.h
     ${CMAKE_SOURCE_DIR}/src/image/filter.h
     ${CMAKE_SOURCE_DIR}/src/image/colorspace_op.h
+    ${CMAKE_SOURCE_DIR}/src/image/utils.h
     # numerical headers
     ${CMAKE_SOURCE_DIR}/src/numerical/types.h
 )
