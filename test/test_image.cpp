@@ -293,3 +293,12 @@ TEST(Image, gaussian_kernel)
     savePNG("./Random", random);
     EXPECT_EQ(0, remove("./Random.png"));
 }
+
+TEST(Image, gaussian_kernel_lena)
+{
+    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> lenaRGB = loadPNG<uint8_t>("./test/test_image/lena256.png", 3);
+    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> lenaRGBFiltered;
+    GaussianBlur(lenaRGB, lenaRGBFiltered);
+    savePNG("./lenaRGBGaussian", lenaRGBFiltered);
+    EXPECT_EQ(0, remove("./lenaRGBGaussian.png"));
+}

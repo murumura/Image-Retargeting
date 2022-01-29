@@ -67,15 +67,7 @@ namespace Image {
     // Defines functions for different types of sampling kernels.
     enum class KernelType {
         // Lanczos kernel with radius 1.  Aliases but does not ring.
-        Lanczos1Kernel,
-
-        // Lanczos kernel with radius 3.  High-quality practical filter but may have
-        // some ringing especially on synthetic images.
-        Lanczos3Kernel,
-
-        // Lanczos kernel with radius 5.  Very-high-quality filter but may have
-        // stronger ringing.
-        Lanczos5Kernel,
+        LanczosKernel,
 
         // Gaussian kernel with radius 3, sigma = 1.5 / 3.  Less commonly used.
         GaussianKernel,
@@ -107,12 +99,8 @@ namespace Image {
     inline KernelType stringToKernelType(const std::string& kernelType)
     {
         const std::string lower_case = stringToLower(kernelType);
-        if (lower_case == "lanczos1")
-            return KernelType::Lanczos1Kernel;
-        else if (lower_case == "lanczos3")
-            return KernelType::Lanczos3Kernel;
-        else if (lower_case == "lanczos5")
-            return KernelType::Lanczos5Kernel;
+        if (lower_case == "lanczos")
+            return KernelType::LanczosKernel;
         else if (lower_case == "gaussian")
             return KernelType::GaussianKernel;
         else if (lower_case == "box")
@@ -126,12 +114,14 @@ namespace Image {
         else
             throw std::invalid_argument("Unknown kernel type: " + kernelType);
     }
+
     namespace Functor {
 
         // A function object for a Lanczos kernel.
         struct LanczosKernelFunc {
             // Pass 1 for Lanczos1 kernel, 3 for Lanczos3 etc.
-            explicit LanczosKernelFunc(float _radius) : radius(_radius)
+            template <typename... Args>
+            explicit LanczosKernelFunc(float _radius, Args&&... args) : radius(_radius)
             {
                 Index kernelSize = static_cast<Index>(kSize());
                 kernelTensor.resize(kernelSize, kernelSize, 1);
@@ -139,6 +129,7 @@ namespace Image {
                     for (Index x = 0; x < kernelTensor.dimension(1); ++x)
                         for (Index y = 0; y < kernelTensor.dimension(0); ++y)
                             kernelTensor(y, x, d) = computeKernel(static_cast<float>(x), static_cast<float>(y));
+
                 // normalize kernel such that sum of elements is one
                 // if it is not normalized, the image becomes darker
                 float kernelSum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)kernelTensor.sum())(0);
@@ -180,12 +171,31 @@ namespace Image {
             // for Common Resampling Tasks" for kernels with a support of 3 pixels:
             // www.realitypixels.com/turk/computergraphics/ResamplingFilters.pdf
             // This implies a radius of 1.5,
-            explicit GaussianKernelFunc(float _radius = 1.5f)
-                : radius(_radius), sigma(radius / kRadiusMultiplier)
+            template <typename... Args>
+            explicit GaussianKernelFunc(float _radius = 1.5f, Args&&... args)
+                : radius(_radius), sigmaX(radius / kRadiusMultiplier), sigmaY(sigmaX)
+            {
+                createKernel();
+            }
+
+            template <typename... Args>
+            explicit GaussianKernelFunc(float sigma_, float _radius, Args&&... args)
+                : radius(_radius), sigmaX(sigma_), sigmaY(sigma_)
+            {
+                createKernel();
+            }
+
+            template <typename... Args>
+            explicit GaussianKernelFunc(float sigmaX_, float sigmaY_, float _radius, Args&&... args)
+                : radius(_radius), sigmaX(sigmaX_), sigmaY(sigmaY_)
+            {
+                createKernel();
+            }
+
+            void createKernel()
             {
                 Index kernelSize = static_cast<Index>(kSize());
                 kernelTensor.resize(kernelSize, kernelSize, 1);
-                std::cout << kernelSize << std::endl;
                 for (Index d = 0; d < kernelTensor.dimension(2); ++d)
                     for (Index x = 0; x < kernelTensor.dimension(1); ++x)
                         for (Index y = 0; y < kernelTensor.dimension(0); ++y) {
@@ -206,7 +216,7 @@ namespace Image {
                     x = 0.0;
                 if (y >= radius)
                     y = 0.0;
-                return std::exp(-(x * x + y * y) / (2.0 * sigma * sigma));
+                return std::exp(-(x * x + y * y) / (2.0 * sigmaX * sigmaY));
             }
 
             float computeKernel(float x) const
@@ -214,34 +224,26 @@ namespace Image {
                 x = std::abs(x);
                 if (x >= radius)
                     return 0.0;
-                return std::exp(-x * x / (2.0 * sigma * sigma));
+                return std::exp(-x * x / (2.0 * sigmaX * sigmaX));
             }
 
             auto operator()() const { return kernelTensor; }
             float kSize() const { return radius * 2; }
             const float radius;
-            const float sigma; // Gaussian standard deviation
+            const float sigmaX, sigmaY; // Gaussian standard deviation
             Eigen::Tensor<float, 3, Eigen::RowMajor> kernelTensor;
         };
 
-        inline LanczosKernelFunc createLanczos1Kernel()
+        template <typename... Args>
+        inline LanczosKernelFunc createLanczosKernel(float radius = 1.0f, Args&&... args)
         {
-            return LanczosKernelFunc(1.0);
+            return LanczosKernelFunc(radius, std::forward<Args>(args)...);
         }
 
-        inline LanczosKernelFunc createLanczos3Kernel()
+        template <typename... Args>
+        inline GaussianKernelFunc createGaussianKernel(float radius = 1.5f, Args&&... args)
         {
-            return LanczosKernelFunc(3.0);
-        }
-
-        inline LanczosKernelFunc createLanczos5Kernel()
-        {
-            return LanczosKernelFunc(5.0);
-        }
-
-        inline GaussianKernelFunc createGaussianKernel()
-        {
-            return GaussianKernelFunc(1.5);
+            return GaussianKernelFunc(std::forward<Args>(args)...);
         }
 
     } // namespace Functor
@@ -261,47 +263,71 @@ namespace Image {
     public:
         explicit TypedKernel(const KType& kernel, std::string paddingMode = "reflect", float paddingValue = 0)
             : kernel_(kernel), paddingMode_(paddingMode), paddingValue_(paddingValue) {}
+
         Eigen::Tensor<float, 3, Eigen::RowMajor> getKernel() const override { return kernel_(); }
+
         float kSize() const override { return kernel_.kSize(); }
+
         std::string getPaddingMode() const { return paddingMode_; }
+
         float getPaddingValue() const { return paddingValue_; }
+
         const KType kernel_;
+
         std::string paddingMode_{"reflect"};
+
         float paddingValue_{};
     };
 
-    template <typename KType, typename... Args>
-    std::unique_ptr<const Kernel> createKernel(const KType& kernel, Args&&... args)
+    template <typename KType>
+    std::unique_ptr<const Kernel> createKernel(
+        const KType& kernel,
+        const std::string& paddingMode,
+        float paddingValue)
     {
-        return Utils::makeUnique<TypedKernel<KType>>(kernel, std::forward<Args>(args)...);
+        return Utils::makeUnique<TypedKernel<KType>>(kernel, paddingMode, paddingValue);
     }
 
     template <typename... Args>
-    std::unique_ptr<const Kernel> create(const std::string& kernelTypeStr, Args&&... args)
+    std::unique_ptr<const Kernel> create(const std::string& kernelTypeStr, const std::string& paddingMode = "reflect", float paddingValue = 0, Args&&... args)
     {
         KernelType kernelType = stringToKernelType(kernelTypeStr);
         switch (kernelType) {
-        case KernelType::Lanczos1Kernel:
-            return createKernel(Functor::createLanczos1Kernel(), std::forward<Args>(args)...);
-        case KernelType::Lanczos3Kernel:
-            return createKernel(Functor::createLanczos3Kernel(), std::forward<Args>(args)...);
-        case KernelType::Lanczos5Kernel:
-            return createKernel(Functor::createLanczos5Kernel(), std::forward<Args>(args)...);
+        case KernelType::LanczosKernel:
+            return createKernel(Functor::createLanczosKernel(std::forward<Args>(args)...), paddingMode, paddingValue);
         case KernelType::GaussianKernel:
-            return createKernel(Functor::createGaussianKernel(), std::forward<Args>(args)...);
-        /*
-        case KernelType::BoxKernel:
-            return createKernel(Functor::createBoxKernel());
-        case KernelType::TriangleKernel:
-            return createKernel(Functor::createTriangleKernel());
-        case KernelType::KeysCubicKernel:
-            return createKernel(Functor::createKeysCubicKernel());
-        case KernelType::MitchellCubicKernel:
-            return createKernel(Functor::createMitchellCubicKernel());
-        */
+            return createKernel(Functor::createGaussianKernel(std::forward<Args>(args)...), paddingMode, paddingValue);
         default:
             return nullptr;
         }
+    }
+
+    template <typename T>
+    void GaussianBlur(
+        const Eigen::Tensor<T, 3, Eigen::RowMajor>& src,
+        Eigen::Tensor<T, 3, Eigen::RowMajor>& dst,
+        const std::string& paddingMode = "reflect",
+        float sigma = 0.5,
+        float radius = 1.5,
+        float paddingValue = 0,
+        bool seperateConv = true)
+    {
+        // create gaussian filter
+        auto gaussianKernel = create("gaussian", paddingMode, paddingValue, sigma, radius);
+        const Index C = src.dimension(2);
+        const Index H = src.dimension(0);
+        const Index W = src.dimension(1);
+        dst.resize(H, W, C);
+        if (seperateConv && C > 1) {
+            for (Index i = 0; i < C; i++) {
+                Eigen::array<Index, 3> offset = {0, 0, i};
+                Eigen::array<Index, 3> extent = {H, W, 1};
+                dst.slice(offset, extent) = imageConvolution<T>(
+                    src.slice(offset, extent).eval(), gaussianKernel->getKernel(), gaussianKernel->getPaddingMode(), gaussianKernel->getPaddingValue());
+            }
+        }
+        else
+            dst = imageConvolution<T>(src, gaussianKernel->getKernel(), gaussianKernel->getPaddingMode(), gaussianKernel->getPaddingValue());
     }
 
 } // namespace Image
