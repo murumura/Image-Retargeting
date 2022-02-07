@@ -44,12 +44,15 @@ set (RESIZING_HEADER
     ${CMAKE_SOURCE_DIR}/src/image/filter.h
     ${CMAKE_SOURCE_DIR}/src/image/colorspace_op.h
     ${CMAKE_SOURCE_DIR}/src/image/utils.h
+    ${CMAKE_SOURCE_DIR}/src/image/segmentation.h
+    ${CMAKE_SOURCE_DIR}/src/image/wrapping.h
+    ${CMAKE_SOURCE_DIR}/src/image/saliency.h
     # numerical headers
     ${CMAKE_SOURCE_DIR}/src/numerical/types.h
 )
 
 set (RESIZING_SOURCE
-    ${CMAKE_SOURCE_DIR}/src/main.cpp
+    ${CMAKE_SOURCE_DIR}/src/resize.cpp
 )
 
 add_executable(patch_based_resizing

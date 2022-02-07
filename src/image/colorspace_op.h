@@ -1,9 +1,57 @@
 #ifndef COLORSPACE_H
 #define COLORSPACE_H
+#include <array>
 #include <image/image.h>
+#include <map>
 #include <type_traits>
 namespace Image {
     namespace Functor {
+        // clang-format off
+        static std::map<
+            std::string, 
+            std::map<std::string, std::array<float, 3>>
+        >
+        illuminants
+        {
+            {"A", 
+                {
+                    {"2", {1.098466069456375, 1, 0.3558228003436005}}, 
+                    {"10",{1.111420406956693, 1, 0.3519978321919493}}
+                }
+            },
+            {"D50", 
+                {
+                    {"2", {0.9642119944211994, 1, 0.8251882845188288}}, 
+                    {"10",{0.9672062750333777, 1, 0.8142801513128616}}
+                }
+            },
+            {"D55", 
+                {
+                    {"2", {0.956797052643698, 1, 0.9214805860173273}}, 
+                    {"10",{0.9579665682254781, 1, 0.9092525159847462}}
+                }
+            },
+            {"D65", 
+                {
+                    {"2", {0.95047, 1.0, 1.08883}}, 
+                    {"10",{0.94809667673716, 1, 1.0730513595166162}}
+                }
+            },
+            {"D75", 
+                {
+                    {"2", {0.9497220898840717, 1, 1.226393520724154}}, 
+                    {"10",{0.9441713925645873, 1, 1.2064272211720228}}
+                }
+            },
+            {"E", 
+                {
+                    {"2", {1.0, 1.0, 1.0}}, 
+                    {"10",{1.0, 1.0, 1.0}}
+                }
+            }
+        };
+        // clang-format on
+
         template <typename Scalar, typename Device = Eigen::DefaultDevice,
             typename = std::enable_if_t<std::is_floating_point_v<Scalar>>>
         struct RGBToHSV {
@@ -87,6 +135,96 @@ namespace Image {
             }
         };
 
+        template <typename Scalar, typename Device = Eigen::DefaultDevice,
+            typename = std::enable_if_t<std::is_floating_point_v<Scalar>>>
+        struct RGBToXYZ {
+            void operator()(
+                const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& inputRGB,
+                Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& outputXYZ,
+                const Device& device = Eigen::DefaultDevice())
+            {
+                const int H = inputRGB.dimension(0);
+                const int W = inputRGB.dimension(1);
+                const int C = inputRGB.dimension(2);
+                outputXYZ.resize(H, W, C);
+                Eigen::Tensor<float, 2, Eigen::RowMajor> kernel(3, 3);
+                kernel.setValues(
+                    {{0.412453, 0.357580, 0.180423},
+                        {0.212671, 0.715160, 0.072169},
+                        {0.019334, 0.119193, 0.950227}});
+                Eigen::Tensor<float, 3, Eigen::RowMajor> normalizedRGB = inputRGB.template cast<float>() / float(255.0);
+                Eigen::Tensor<float, 3, Eigen::RowMajor> value(H, W, C);
+
+                value = (normalizedRGB > float(0.04045)).select(((normalizedRGB + float(0.055)) / float(1.055)).pow(2.4), normalizedRGB / float(12.92));
+
+                Eigen::array<Eigen::IndexPair<int>, 1> transposed_product_dims = {Eigen::IndexPair<int>(2, 1)};
+                outputXYZ.device(device) = value.contract(kernel, transposed_product_dims) * float(255.0);
+            }
+        };
+
+        template <typename Scalar, typename Device = Eigen::DefaultDevice,
+            typename = std::enable_if_t<std::is_floating_point_v<Scalar>>>
+        struct RGBToCIE {
+            void operator()(
+                const Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& inputRGB,
+                Eigen::Tensor<Scalar, 3, Eigen::RowMajor>& outputCIE,
+                const std::string& lluminant = "D65", const std::string& observer = "2",
+                const Device& device = Eigen::DefaultDevice())
+            {
+                const int H = inputRGB.dimension(0);
+                const int W = inputRGB.dimension(1);
+                const int C = inputRGB.dimension(2);
+                outputCIE.resize(H, W, C);
+                std::array<float, 3> coords = illuminants[lluminant][observer];
+                Eigen::Tensor<float, 3, Eigen::RowMajor> XYZ = RGBToXYZ(inputRGB.template cast<float>() / float(255.0));
+
+                Eigen::array<Index, 3> offset = {H, W, 1};
+                XYZ.slice(Eigen::array<Index, 3>{0, 0, 0}, offset) = (XYZ.slice(Eigen::array<Index, 3>{0, 0, 0}, offset) / coords[0]);
+                XYZ.slice(Eigen::array<Index, 3>{0, 0, 1}, offset) = (XYZ.slice(Eigen::array<Index, 3>{0, 0, 1}, offset) / coords[1]);
+                XYZ.slice(Eigen::array<Index, 3>{0, 0, 2}, offset) = (XYZ.slice(Eigen::array<Index, 3>{0, 0, 2}, offset) / coords[2]);
+
+                // clang-format off
+                XYZ = (XYZ > Scalar(0.008856)).select(
+                    XYZ.pow(1.0 / 3.0), 
+                    XYZ * Scalar(7.787) + Scalar(16.0) / Scalar(116.0)
+                );
+                // clang-format on
+
+                auto X = XYZ.chip<2>(0);
+                auto Y = XYZ.chip<2>(1);
+                auto Z = XYZ.chip<2>(2);
+
+                auto L = outputCIE.template chip<2>(0);
+                auto A = outputCIE.template chip<2>(1);
+                auto B = outputCIE.template chip<2>(2);
+
+                // The L channel values are in the range 0..100. a and b are in the range -127..127.
+                L.device(device) = Y * Scalar(116.0) - Scalar(16.0);
+                A.device(device) = (X - Y) * Scalar(500.0);
+                B.device(device) = (Y - Z) * Scalar(200.0);
+            }
+
+            Eigen::Tensor<float, 3, Eigen::RowMajor>
+            RGBToXYZ(const Eigen::Tensor<float, 3, Eigen::RowMajor>& normalizedRGB)
+            {
+                Eigen::Tensor<float, 2, Eigen::RowMajor> kernel(3, 3);
+                kernel.setValues(
+                    {{0.412453, 0.357580, 0.180423},
+                        {0.212671, 0.715160, 0.072169},
+                        {0.019334, 0.119193, 0.950227}});
+                Eigen::Tensor<float, 3, Eigen::RowMajor> value(normalizedRGB.dimension(0), normalizedRGB.dimension(1), normalizedRGB.dimension(2));
+
+                // clang-format off
+                value = \
+                    (normalizedRGB > float(0.04045)).select(
+                        ((normalizedRGB + float(0.055)) / float(1.055)).pow(2.4), 
+                        normalizedRGB / float(12.92)
+                    );
+                // clang-format on
+                Eigen::array<Eigen::IndexPair<int>, 1> transposed_product_dims = {Eigen::IndexPair<int>(2, 1)};
+                return value.contract(kernel, transposed_product_dims);
+            }
+        };
     } // namespace Functor
 } // namespace Image
 

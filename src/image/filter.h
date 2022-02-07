@@ -93,6 +93,7 @@ namespace Image {
         // Always insert new kernel types before this.
         KernelTypeEnd
     };
+    constexpr float kPI = 3.14159265359;
 
     // Converts a string into the corresponding kernel type.
     // Invoke invalid argument exception if the string couldn't be converted.
@@ -138,7 +139,6 @@ namespace Image {
 
             float computeKernel(float x) const
             {
-                constexpr float kPI = 3.14159265359;
                 x = std::abs(x);
                 if (x > radius)
                     return 0.0;
@@ -179,14 +179,14 @@ namespace Image {
             }
 
             template <typename... Args>
-            explicit GaussianKernelFunc(float sigma_, float _radius, Args&&... args)
+            explicit GaussianKernelFunc(float _radius, float sigma_, Args&&... args)
                 : radius(_radius), sigmaX(sigma_), sigmaY(sigma_)
             {
                 createKernel();
             }
 
             template <typename... Args>
-            explicit GaussianKernelFunc(float sigmaX_, float sigmaY_, float _radius, Args&&... args)
+            explicit GaussianKernelFunc(float _radius, float sigmaX_, float sigmaY_, Args&&... args)
                 : radius(_radius), sigmaX(sigmaX_), sigmaY(sigmaY_)
             {
                 createKernel();
@@ -197,8 +197,8 @@ namespace Image {
                 Index kernelSize = static_cast<Index>(kSize());
                 kernelTensor.resize(kernelSize, kernelSize, 1);
                 for (Index d = 0; d < kernelTensor.dimension(2); ++d)
-                    for (Index x = 0; x < kernelTensor.dimension(1); ++x)
-                        for (Index y = 0; y < kernelTensor.dimension(0); ++y) {
+                    for (Index y = 0; y < kernelTensor.dimension(0); ++y)
+                        for (Index x = 0; x < kernelTensor.dimension(1); ++x) {
                             kernelTensor(y, x, d) = computeKernel(
                                 std::ceil(static_cast<float>(x) - radius),
                                 std::ceil(static_cast<float>(y) - radius));
@@ -216,7 +216,8 @@ namespace Image {
                     x = 0.0;
                 if (y >= radius)
                     y = 0.0;
-                return std::exp(-(x * x + y * y) / (2.0 * sigmaX * sigmaY));
+                float invDivide = 1.0 / (2.0 * kPI * sigmaX * sigmaY);
+                return std::exp(-(x * x + y * y) / (2.0 * sigmaX * sigmaY)) * invDivide;
             }
 
             float computeKernel(float x) const
@@ -243,7 +244,7 @@ namespace Image {
         template <typename... Args>
         inline GaussianKernelFunc createGaussianKernel(float radius = 1.5f, Args&&... args)
         {
-            return GaussianKernelFunc(std::forward<Args>(args)...);
+            return GaussianKernelFunc(radius, std::forward<Args>(args)...);
         }
 
     } // namespace Functor
@@ -313,7 +314,7 @@ namespace Image {
         bool seperateConv = true)
     {
         // create gaussian filter
-        auto gaussianKernel = create("gaussian", paddingMode, paddingValue, sigma, radius);
+        auto gaussianKernel = create("gaussian", paddingMode, paddingValue, radius, sigma);
         const Index C = src.dimension(2);
         const Index H = src.dimension(0);
         const Index W = src.dimension(1);

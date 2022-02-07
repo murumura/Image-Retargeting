@@ -129,6 +129,39 @@ TEST(Image, rgb_to_hsv)
                 EXPECT_NEAR(rgb_from_hsv(r, c, d), rgb(r, c, d), 1e-6);
 }
 
+TEST(Image, rgb_to_xyz)
+{
+    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> lenaRGB = loadPNG<uint8_t>("./test/test_image/lena256.png", 3);
+    Eigen::Tensor<float, 3, Eigen::RowMajor> lenaXYZ;
+    Image::Functor::RGBToXYZ<float>()(lenaRGB.cast<float>(), lenaXYZ);
+
+    savePNG<uint8_t, 3>("./lenaXYZ", lenaXYZ.cast<uint8_t>());
+    EXPECT_EQ(0, remove("./lenaXYZ.png"));
+}
+
+TEST(Image, rgb_to_cie)
+{
+    Eigen::Tensor<float, 3, Eigen::RowMajor> rgb(2, 2, 3);
+    Eigen::Tensor<float, 3, Eigen::RowMajor> cie(2, 2, 3);
+    Eigen::Tensor<float, 3, Eigen::RowMajor> cieExp(2, 2, 3);
+    rgb.setValues({{{255.0, 255.0, 255.0},
+        {30.0, 221.0, 243.0},
+        {42.0, 69.0, 84.0},
+        {73.0, 112.0, 212.0}}});
+
+    cieExp.setValues({{{100.00, 0.00, 0.00},
+        {80.99, -35.53, -23.09},
+        {27.81, -5.55, -12.15},
+        {49.20, 18.44, -55.67}}});
+
+    Image::Functor::RGBToCIE<float>()(rgb, cie);
+
+    for (int r = 0; r < cie.dimension(0); r++)
+        for (int c = 0; c < cie.dimension(1); c++)
+            for (int d = 0; d < cie.dimension(2); d++)
+                EXPECT_NEAR(cie(r, c, d), cieExp(r, c, d), 1e-2);
+}
+
 TEST(Image, Panda_to_gray)
 {
     Uint8Image pandaRGB = loadPNG<uint8_t>("./test/test_image/panda.png", 3);
@@ -296,9 +329,9 @@ TEST(Image, gaussian_kernel)
 
 TEST(Image, gaussian_kernel_lena)
 {
-    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> lenaRGB = loadPNG<uint8_t>("./test/test_image/lena256.png", 3);
-    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> lenaRGBFiltered;
-    GaussianBlur(lenaRGB, lenaRGBFiltered);
-    savePNG("./lenaRGBGaussian", lenaRGBFiltered);
-    EXPECT_EQ(0, remove("./lenaRGBGaussian.png"));
+    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> RGB = loadPNG<uint8_t>("./test/test_image/blur.png", 3);
+    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> blurRGB;
+    GaussianBlur(RGB, blurRGB, "reflect", 0.707, 1.5);
+    savePNG("./blurRGB", blurRGB);
+    EXPECT_EQ(0, remove("./blurRGB.png"));
 }

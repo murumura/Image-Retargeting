@@ -1,19 +1,42 @@
 #ifndef SEGMENTATION_H
 #define SEGMENTATION_H
+#include <cstdlib>
+#include <functional>
 #include <image/filter.h>
 #include <image/image.h>
+#include <image/wrapping.h>
+#include <iostream>
+#include <map>
 #include <memory>
+#include <utility>
 #include <vector>
 namespace Image {
     // Helpers
+
+    template <typename T>
+    Eigen::Tensor<T, 3, Eigen::RowMajor>
+    randomColor(int segId, int C)
+    {
+        srand(segId);
+        Eigen::Tensor<T, 3, Eigen::RowMajor> randomColor;
+        randomColor.resize(1, 1, C);
+        for (int d = 0; d < C; d++)
+            randomColor(0, 0, d) = (T)rand();
+        return randomColor;
+    }
 
     // Represent an edge between two pixels
     class Edge {
     public:
         int from;
         int to;
+        std::pair<int, int> fromUV;
+        std::pair<int, int> toUV;
         float weight;
-        Edge(int from_, int to_, float weight_) : from{from_}, to{to_}, weight{weight_} {}
+
+        Edge(int from_, int to_, float weight_, int fromU, int fromV, int toU, int toV)
+            : from{from_}, to{to_}, weight{weight_}, fromUV{fromU, fromV}, toUV{toU, toV} {}
+
         bool operator<(const Edge& e) const
         {
             return weight < e.weight;
@@ -41,7 +64,6 @@ namespace Image {
         PointSet(int numElements_)
         {
             numElements = numElements_;
-            mapping.resize(numElements);
             for (int i = 0; i < numElements; i++) {
                 mapping.emplace_back(PointSetElement(i));
             }
@@ -87,7 +109,7 @@ namespace Image {
     class GraphSegmentation {
     public:
         explicit GraphSegmentation()
-            : sigma{0.5f}, k{300.0f}, minSize{100}, pixelInPatch{-1.0f}, adjColorDist{20.0f}
+            : sigma{0.5f}, k{300.0f}, minSize{100}, pixelInPatch{-1.0f}, adjColorDist{-1.0f}
         {
             name = "GraphSegmentation";
         }
@@ -118,7 +140,9 @@ namespace Image {
         float k;
         int minSize;
         std::string name;
+        // threshold of patch area of entire image to be merged
         float pixelInPatch;
+        // color similarity of adjacent area to be merged
         float adjColorDist;
 
         // Pre-filter the image
@@ -128,7 +152,7 @@ namespace Image {
             Eigen::Tensor<T, 3, Eigen::RowMajor>& imgFiltered)
         {
             ///< smoothing image using 3x3 kernel
-            GaussianBlur(img, imgFiltered, "reflect", sigma);
+            GaussianBlur(img, imgFiltered, "reflect", sigma, 1.5f);
         }
 
         // Build the graph between each pixels
@@ -140,33 +164,37 @@ namespace Image {
             int height = imgFiltered.dimension(0);
             int width = imgFiltered.dimension(1);
             int numChannels = imgFiltered.dimension(2);
-            Eigen::Tensor<T, 3, Eigen::RowMajor> imgFilteredFloat = imgFiltered.template cast<float>();
+            Eigen::Tensor<float, 3, Eigen::RowMajor> imgFilteredFloat = imgFiltered.template cast<float>();
+
             for (int r = 0; r < height; r++) {
                 for (int c = 0; c < width; c++) {
-                    //Take the right, left, top and down pixel
+                    // Take the right, left, top and down pixel
                     for (int delta = -1; delta <= 1; delta += 2) {
                         for (int delta_c = 0, delta_r = 1; delta_c <= 1; delta_c++ || delta_r--) {
                             int r2 = r + delta * delta_r;
                             int c2 = c + delta * delta_c;
+
                             if (r2 >= 0 && r2 < height && c2 >= 0 && c2 < width) {
 
                                 float diffSquare = 0;
 
                                 for (int d = 0; d < numChannels; ++d) {
                                     float diff = imgFilteredFloat(r, c, d) - imgFilteredFloat(r2, c2, d);
-                                    diffSquare += diff * diff;
+                                    diffSquare += (diff * diff);
                                 }
 
                                 float diff = std::sqrt(diffSquare);
                                 int from = r * width + c;
                                 int to = r2 * width + c2;
-                                edges.emplace_back(Edge(diff, from, to));
+
+                                edges.emplace_back(Edge(from, to, diff, r, c, r2, c2));
                             }
                         }
                     }
                 }
             }
         }
+
         // Segment the graph
         template <typename T>
         void segmentGraph(
@@ -180,12 +208,11 @@ namespace Image {
 
             // Sort edges
             std::sort(edges.begin(), edges.end());
-
             // Create a set with all point (by default mapped to themselves)
             es = std::make_shared<PointSet>(height * width);
 
             // Thresholds
-            std::vector<float> thresholds(k, totalPoints);
+            std::vector<float> thresholds(totalPoints, k);
 
             for (int i = 0; i < edges.size(); i++) {
 
@@ -221,18 +248,18 @@ namespace Image {
                 }
             }
         }
+
         // Map the segemented graph to a image with uniques, sequentials ids
-        template <typename T>
         void finalMapping(
             std::shared_ptr<PointSet>& es,
-            Eigen::Tensor<T, 3, Eigen::RowMajor>& output)
+            Eigen::Tensor<int, 3, Eigen::RowMajor>& segMapping)
         {
-            int height = output.dimension(0);
-            int width = output.dimension(1);
+            int height = segMapping.dimension(0);
+            int width = segMapping.dimension(1);
             int maximumSize = (int)(height * width);
             int lastId = 0;
             std::vector<int> mappedId(maximumSize, -1);
-            output.setZero();
+            segMapping.setZero();
             for (int i = 0; i < height; i++) {
 
                 for (int j = 0; j < width; j++) {
@@ -244,35 +271,149 @@ namespace Image {
                         lastId++;
                     }
 
-                    output(i, j, 0) = mappedId[point];
+                    segMapping(i, j, 0) = mappedId[point];
                 }
             }
         }
 
         template <typename T>
-        void mergePatch()
-        {
-        }
-
-        template <typename T>
         void
         outputSegResult(
-            const Eigen::Tensor<T, 3, Eigen::RowMajor>& segMapping,
+            const Eigen::Tensor<T, 3, Eigen::RowMajor>& imgSrc,
+            Eigen::Tensor<int, 3, Eigen::RowMajor>& segMapping,
+            std::vector<Image::Patch>& patches,
             Eigen::Tensor<T, 3, Eigen::RowMajor>& imgDst)
         {
+            imgDst.setZero();
+            int C = imgSrc.dimension(2);
+            int H = imgSrc.dimension(0);
+            int W = imgSrc.dimension(1);
+            int nSegment = ((Eigen::Tensor<int, 0, Eigen::RowMajor>)segMapping.maximum())(0) + 1;
+            std::cout << "Num Segments: " << nSegment << std::endl;
+            if (pixelInPatch > 0 && adjColorDist > 0) {
+                Eigen::Tensor<float, 3, Eigen::RowMajor> emptyColor(1, 1, C);
+                emptyColor.setZero();
+
+                // store aggregate colors of each segment (patch)
+                std::map<int, Eigen::Tensor<float, 3, Eigen::RowMajor>> patchColors;
+
+                // store average colors of each segment (patch)
+                std::map<int, Eigen::Tensor<float, 3, Eigen::RowMajor>> patchAvgColors;
+
+                // store pixel numbers of each segment (patch)
+                std::map<int, int> patchCounts;
+
+                // Each patch is assigned an average color to roughly represent this patch
+                for (int r = 0; r < H; r++) {
+                    for (int c = 0; c < W; c++) {
+                        int segId = segMapping(r, c, 0);
+                        Eigen::array<Index, 3> offset = {r, c, 0};
+                        Eigen::array<Index, 3> extent = {1, 1, C};
+                        if (!patchColors.count(segId)) {
+                            patchColors.insert({segId, emptyColor});
+                            patchCounts.insert({segId, 0});
+                        }
+                        patchColors[segId] += imgSrc.template slice(offset, extent).template cast<float>().eval();
+                        patchCounts[segId]++;
+                    }
+                }
+
+                // Calculate average color of each patch
+                for (int segId = 0; segId < nSegment; segId++) {
+                    patchAvgColors.insert({segId, (patchColors[segId] / (float)patchCounts[segId]).eval()});
+                }
+
+                int patchMinSize = pixelInPatch * H * W;
+
+                std::function<float(int, int)> calcColorDist = [&](int segIdA, int segIdB) {
+                    float colorDist = 0;
+                    // clang-format off
+                    colorDist = std::sqrt(
+                        (
+                            (Eigen::Tensor<float, 0, Eigen::RowMajor>)(patchAvgColors[segIdA] - patchAvgColors[segIdB]).square().sum().eval()
+                        )(0)
+                    );
+                    // clang-format on
+                    return colorDist;
+                };
+
+                std::function<void(int, int)> changeMapping = [&](int fromID, int toID) {
+                    for (int r = 0; r < H; r++)
+                        for (int c = 0; c < W; c++)
+                            if (segMapping(r, c, 0) == fromID)
+                                segMapping(r, c, 0) = toID;
+                };
+
+                // additional merge
+                for (int r = 0; r < H; r++) {
+                    for (int c = 0; c < W; c++) {
+                        // Take the right, left, top and down pixel
+                        for (int delta = -1; delta <= 1; delta += 2) {
+                            for (int delta_c = 0, delta_r = 1; delta_c <= 1; delta_c++ || delta_r--) {
+                                int r2 = r + delta * delta_r;
+                                int c2 = c + delta * delta_c;
+                                if (r2 >= 0 && r2 < H && c2 >= 0 && c2 < W) {
+                                    int segIdpA = segMapping(r, c, 0);
+                                    int segIdpB = segMapping(r2, c2, 0);
+                                    if (segIdpA != segIdpB && ((patchCounts[segIdpA] < patchMinSize || patchCounts[segIdpB] < patchMinSize) || calcColorDist(segIdpA, segIdpB) <= adjColorDist)) {
+                                        if (patchCounts[segIdpA] < patchCounts[segIdpB])
+                                            std::swap(segIdpA, segIdpB);
+                                        float ratioA = float(patchCounts[segIdpA]) / float(patchCounts[segIdpA] + patchCounts[segIdpB]);
+                                        float ratioB = float(patchCounts[segIdpB]) / float(patchCounts[segIdpA] + patchCounts[segIdpB]);
+                                        patchAvgColors[segIdpA] = patchAvgColors[segIdpA] * ratioA + patchAvgColors[segIdpB] * ratioB;
+                                        patchCounts[segIdpA] += patchCounts[segIdpB];
+                                        patchCounts.erase(segIdpB);
+                                        patchAvgColors.erase(segIdpB);
+                                        changeMapping(segIdpB, segIdpA);
+                                        nSegment--;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                std::cout << "Num Segments: " << nSegment << std::endl;
+                // mapping result to output image
+                for (int r = 0; r < H; r++)
+                    for (int c = 0; c < W; c++) {
+                        int segId = segMapping(r, c, 0);
+                        Eigen::array<Index, 3> offset = {r, c, 0};
+                        Eigen::array<Index, 3> extent = {1, 1, C};
+                        imgDst.template slice(offset, extent) = patchAvgColors[segId].template cast<T>();
+                    }
+
+                // populate patches before return
+                for (const auto& [segId, patchSize] : patchCounts) {
+                    patches.emplace_back(Patch{segId, patchSize});
+                    patches.back().setPatchColor(patchAvgColors[segId]);
+                }
+                std::cout << "Num patches: " << patches.size() << std::endl;
+            }
+            else {
+                // random color mapping as specified in original paper
+                // Efficient Graph-Based Image Segmentation(2004)](http://people.cs.uchicago.edu/~pff/papers/seg-ijcv.pdf)
+                for (int r = 0; r < H; r++)
+                    for (int c = 0; c < W; c++) {
+                        int segId = segMapping(r, c, 0);
+                        Eigen::array<Index, 3> offset = {r, c, 0};
+                        Eigen::array<Index, 3> extent = {1, 1, C};
+                        imgDst.template slice(offset, extent) = randomColor<T>(segId, C);
+                    }
+            }
         }
 
     public:
         template <typename T>
-        void processImage(
+        void
+        processImage(
             const Eigen::Tensor<T, 3, Eigen::RowMajor>& imgSrc,
+            std::vector<Image::Patch>& patches,
+            Eigen::Tensor<int, 3, Eigen::RowMajor>& segMapping,
             Eigen::Tensor<T, 3, Eigen::RowMajor>& imgDst)
         {
             // For storing final segment results
-            imgDst.resize(imgSrc.dimension(0), imgSrc.dimension(1), 3);
-
-            Eigen::Tensor<T, 3, Eigen::RowMajor> segMapping(imgSrc.dimension(0), imgSrc.dimension(1), 1);
-            segMapping.set(0);
+            imgDst.resize(imgSrc.dimension(0), imgSrc.dimension(1), imgSrc.dimension(2));
 
             // Filter graph
             Eigen::Tensor<T, 3, Eigen::RowMajor> imgFiltered;
@@ -282,9 +423,10 @@ namespace Image {
             std::vector<Edge> edges;
             buildGraph<T>(edges, imgFiltered);
 
-            // Segment graph
+            // Pointer to edge information of paired pixels
             std::shared_ptr<PointSet> es = nullptr;
 
+            // Segment graph
             segmentGraph<T>(edges, imgFiltered, es);
 
             // Remove small areas
@@ -293,13 +435,13 @@ namespace Image {
             // Map segmentation to gray scalar image for later output
             finalMapping(es, segMapping);
 
-            //Output
-            outputSegResult(segMapping, imgDst);
+            // Output
+            outputSegResult<T>(imgSrc, segMapping, patches, imgDst);
         }
     };
 
     std::shared_ptr<GraphSegmentation> createGraphSegmentation(
-        float sigma, float k, int minSize, float pixelInPatch = -1.0f, float adjColorDist=20.0f)
+        float sigma, float k, int minSize, float pixelInPatch = -1.0f, float adjColorDist = -1.0f)
     {
 
         std::shared_ptr<GraphSegmentation> graphSeg = std::make_shared<GraphSegmentation>();
