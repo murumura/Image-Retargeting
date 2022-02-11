@@ -2,7 +2,11 @@
 #define IMAGE_H
 #include <cassert>
 #include <string>
+// These macros must be defined before eigen files are included.
+#define EIGEN_USE_THREADS
 #include <unsupported/Eigen/CXX11/Tensor>
+#include <unsupported/Eigen/CXX11/ThreadPool>
+
 #include <utility>
 namespace Image {
     /// < Alias for image type

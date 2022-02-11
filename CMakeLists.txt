@@ -32,6 +32,7 @@ include_directories(
 list(APPEND RESIZING_CXX_FLAGS "-std=c++17")
 # Turn of eigen tensor warning message (https://stackoverflow.com/questions/54526502/compiler-warnings-with-eigen-tensor-example)
 list(APPEND RESIZING_CXX_FLAGS "-isystem /usr/include/eigen3/unsupported/Eigen/CXX11/src/Tensor")
+list(APPEND RESIZING_CXX_FLAGS "-isystem /usr/include/eigen3/unsupported/Eigen/CXX11/src/ThreadPool")
 list(APPEND RESIZING_CXX_FLAGS "-w")
 ###########################################################################
 # Sources/Headers
@@ -67,6 +68,10 @@ PUBLIC
     ${CMAKE_SOURCE_DIR}/src/numerical
     ${CMAKE_SOURCE_DIR}/src/stb
     ${EIGEN3_INCLUDE_DIR}    
+)
+
+target_link_libraries(patch_based_resizing
+    pthread
 )
 
 target_compile_options(patch_based_resizing  PUBLIC  ${RESIZING_CXX_FLAGS})

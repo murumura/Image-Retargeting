@@ -8,13 +8,19 @@ int main(int argc, const char* argv[])
 {
     struct myOpts
     {
-        std::string InputImage{"./datasets/butterfly.png"};
+        std::string InputImage{"./datasets/maple.png"};
         float Sigma{0.5};
         float SegmentK{300.0};
         int MinSize{100};
         float MergePercent {0.0001};
         float MergeColorDist {20.0};
         bool SaveSegment{true};
+        int DistC{3};
+        int SimilarK{64};
+        int NumScale{3};
+        int ScaleU{4};
+        bool SaveSaliency{true};
+        bool SaveScaledSaliency{true};
     };
 
     auto parser = CommndLineParser<myOpts>::create({
@@ -24,11 +30,17 @@ int main(int argc, const char* argv[])
         {"--MinSize", &myOpts::MinSize, "Segment area threshold"},
         {"--MergePercent", &myOpts::MergePercent, "Additional merge area threshold (in percentage) threshold"},
         {"--MergeColorDist", &myOpts::MergeColorDist, "Additional merge color distance threshold"},
-        {"--SaveSegment", &myOpts::SaveSegment, "Whether to save segmentation result."}
+        {"--SaveSegment", &myOpts::SaveSegment, "Whether to save segmentation result."},
+        {"--DistC", &myOpts::DistC, "Scale variable of position distance"},
+        {"--SimilarK", &myOpts::SimilarK, "K most similar patches"},
+        {"--NumScale", &myOpts::NumScale, "Number of Patches Scale"},
+        {"--ScaleU", &myOpts::ScaleU, "Patches Scale value"},
+        {"--SaveScaledSaliency", &myOpts::SaveScaledSaliency, "Whether to save saliency result of each scale."},
+        {"--SaveSaliency", &myOpts::SaveSaliency, "Whether to save saliency result."}
     });
 
     auto args = parser->parse(argc, argv);
-    // clang-format off
+    
     std::shared_ptr<Image::GraphSegmentation> graphSeg = \
         Image::createGraphSegmentation(
         args.Sigma, 
@@ -37,12 +49,13 @@ int main(int argc, const char* argv[])
         args.MergePercent, 
         args.MergeColorDist
     );
-    // clang-format on 
 
-    std::vector<Image::Patch> patches;
-
+    // Load input image
     Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> input = \
         Image::loadPNG<uint8_t>(args.InputImage, 3);
+    
+    // Store segment patch information
+    std::vector<Image::Patch> patches;
 
     // Store segment ID of each pixel
     Eigen::Tensor<int, 3, Eigen::RowMajor> segMapping(input.dimension(0), input.dimension(1), 1);
@@ -55,4 +68,22 @@ int main(int argc, const char* argv[])
     if (args.SaveSegment)
         Image::savePNG("./segmentation", segResult);
     
+    auto caSaliency = Image::createContextAwareSaliency(
+        args.DistC, 
+        args.SimilarK, 
+        args.NumScale,
+        args.ScaleU,
+        args.SaveScaledSaliency
+    );
+
+    // Store saliency map of input image
+    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> saliencyMap;
+
+    Eigen::Tensor<float, 3, Eigen::RowMajor> significanceMap;
+
+    caSaliency->processImage(input, patches, segMapping, saliencyMap);
+
+    if (args.SaveScaledSaliency)
+        Image::savePNG("./saliency", saliencyMap);
+
 }
