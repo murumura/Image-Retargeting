@@ -21,6 +21,8 @@ int main(int argc, const char* argv[])
         int ScaleU{4};
         bool SaveSaliency{true};
         bool SaveScaledSaliency{true};
+        int newH{400};
+        int newW{400};
     };
 
     auto parser = CommndLineParser<myOpts>::create({
@@ -36,7 +38,9 @@ int main(int argc, const char* argv[])
         {"--NumScale", &myOpts::NumScale, "Number of Patches Scale"},
         {"--ScaleU", &myOpts::ScaleU, "Patches Scale value"},
         {"--SaveScaledSaliency", &myOpts::SaveScaledSaliency, "Whether to save saliency result of each scale."},
-        {"--SaveSaliency", &myOpts::SaveSaliency, "Whether to save saliency result."}
+        {"--SaveSaliency", &myOpts::SaveSaliency, "Whether to save saliency result."},
+        {"--newH", &myOpts::newH, "Resizing Height."},
+        {"--newW", &myOpts::newW, "Resizing Weight."}
     });
 
     auto args = parser->parse(argc, argv);
@@ -81,9 +85,10 @@ int main(int argc, const char* argv[])
 
     Eigen::Tensor<float, 3, Eigen::RowMajor> significanceMap;
 
-    caSaliency->processImage(input, patches, segMapping, saliencyMap);
+    caSaliency->processImage(input, saliencyMap);
 
     if (args.SaveScaledSaliency)
         Image::savePNG("./saliency", saliencyMap);
-
+    
+    Image::Wrapping::assignSignificance(saliencyMap, segMapping, significanceMap, patches);
 }

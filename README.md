@@ -18,10 +18,13 @@ GCC      | 9.3.0
 clang    | 13.0.0
 
 For image processing we only requires ```Eigen3``` to be installed on your system.
-In Ubuntu based systems you can simply install these dependencies using apt-get.
-
 ```bash
-apt-get install libeigen3-dev
+git clone -b '3.4' --single-branch --depth 1 https://gitlab.com/libeigen/eigen.git
+cd eigen
+mkdir build  
+cd build 
+cmake .. 
+make install
 ```
 Make sure Eigen3 can be found by your build system.
 

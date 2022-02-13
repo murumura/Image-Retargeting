@@ -1,5 +1,9 @@
-FROM ubuntu:20.04
 
+# To get access to the CUDA development tools, you should use the devel images instead. These are the relevant tags:
+FROM nvidia/cuda:11.4.2-devel-ubuntu20.04
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="$PATH:/usr/local/cuda/bin"
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64"
 ARG DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NOWARNINGS yes
 
@@ -21,5 +25,12 @@ RUN apt-get update && apt-get upgrade -y &&\
         libeigen3-dev \
         pkg-config \
     && rm -rf /var/lib/apt/lists/*
+
+RUN git clone -b '3.4' --single-branch --depth 1 https://gitlab.com/libeigen/eigen.git && \
+    cd eigen && mkdir build && cd build && cmake .. && make install
+
+# nvidia-container-runtime
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES graphics,utility,compute
 
 WORKDIR /home/ImageResize

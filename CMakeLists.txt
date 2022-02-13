@@ -1,8 +1,8 @@
-# LibWire top-level CMakeLists.txt
+# top-level CMakeLists.txt
 
 cmake_minimum_required (VERSION 3.16)
 
-project (RESIZING LANGUAGES CXX C)
+project (RESIZING LANGUAGES CXX C CUDA)
 
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -48,6 +48,9 @@ set (RESIZING_HEADER
     ${CMAKE_SOURCE_DIR}/src/image/segmentation.h
     ${CMAKE_SOURCE_DIR}/src/image/wrapping.h
     ${CMAKE_SOURCE_DIR}/src/image/saliency.h
+    ${CMAKE_SOURCE_DIR}/src/image/pool.h
+    ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.h
+    ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.cpp
     # numerical headers
     ${CMAKE_SOURCE_DIR}/src/numerical/types.h
 )

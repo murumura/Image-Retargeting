@@ -1,10 +1,10 @@
 #ifndef SALIENCY_H
 #define SALIENCY_H
 #include <cmath>
-#include <functional>
 #include <image/colorspace_op.h>
-#include <image/image.h>
+#include <image/compute_saliency.h>
 #include <image/imageIO.h>
+#include <image/pool.h>
 #include <image/wrapping.h>
 #include <iostream>
 #include <memory>
@@ -20,69 +20,22 @@ namespace Image {
         int scaleU;
         bool saveScaledResults;
 
-        template <typename Device>
-        Eigen::Tensor<float, 3, Eigen::RowMajor> calcSaliencyValue(
-            const Device& device, const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB, int calcR, int calcC)
-        {
-            const int H = imgSrcLAB.dimension(0);
-            const int W = imgSrcLAB.dimension(1);
-            const int C = imgSrcLAB.dimension(2);
-
-            std::function<float(int, int, int, int)> calcColorDist = [&](int r1, int c1, int r2, int c2) {
-                Eigen::array<Index, 3> offset1 = {r1, c1, 0};
-                Eigen::array<Index, 3> offset2 = {r2, c2, 0};
-                Eigen::array<Index, 3> extent = {1, 1, C};
-                Eigen::Tensor<float, 3, Eigen::RowMajor> C1 (1, 1, C);
-                Eigen::Tensor<float, 3, Eigen::RowMajor> C2 (1, 1, C);
-                C1.device(device) = imgSrcLAB.slice(offset1, extent);
-                C2.device(device) = imgSrcLAB.slice(offset2, extent);
-                float colorDist = std::sqrt(
-                    (
-                        (Eigen::Tensor<float, 0, Eigen::RowMajor>)(C1 - C2).square().sum().eval())(0));
-                return colorDist;
-            };
-
-            std::function<float(int, int, int, int)> calcPosDist = [&](int r1, int c1, int r2, int c2) {
-                float dRow = (r1 - r2 + 0.0) / H;
-                float dCol = (c1 - c2 + 0.0) / W;
-                return std::sqrt(dRow * dRow + dCol * dCol);
-            };
-
-            std::vector<float> diffs;
-
-            for (int r = 0; r < H; r++) {
-                for (int c = 0; c < W; c++) {
-                    float dist = calcColorDist(calcR, calcC, r, c) / (1 + distC * calcPosDist(calcR, calcC, r, c));
-                    diffs.push_back(dist);
-                }
-            }
-
-            std::sort(diffs.begin(), diffs.end());
-            float sum = 0;
-            int n = 0;
-            for (n = 0; n <= K && n < diffs.size(); ++n)
-                sum += diffs[n];
-            float saliencyValue = 1 - std::exp(-sum / n);
-            Eigen::Tensor<float, 3, Eigen::RowMajor> ret(1, 1, 1);
-            // wrap return value into tensor for compat
-            ret.setValues({{{saliencyValue}}});
-            return ret;
-        }
-
-        template <typename Device>
         void computeSalienceValueParallel(
-            const Device& device,
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
             const int H, const int W,
             Eigen::Tensor<float, 3, Eigen::RowMajor>& salienceMap)
         {
-            for (int row = 0; row < H; ++row) {
-                for (int col = 0; col < W; ++col) {
-                    Eigen::array<Index, 3> offset = {row, col, 0};
-                    Eigen::array<Index, 3> extent = {1, 1, 1};
-                    salienceMap.slice(offset, extent).device(device) = calcSaliencyValue(device, imgSrcLAB, row, col);
-                }
-            }
+            const uint32_t workerSize = 16;
+            CustomThreadPool pool(workerSize);
+            uint32_t numTasks = H;
+
+            pool.parallelForLoop(
+                0, H, [this, &salienceMap, &imgSrcLAB, &W](const int& start, const int& end) {
+                    for (int r = start; r < end; r++)
+                        for (int c = 0; c < W; c++)
+                            salienceMap(r, c, 0) = calcSaliencyValueCPU(imgSrcLAB, r, c, distC, K);
+                },
+                numTasks);
         }
 
         Eigen::Tensor<float, 3, Eigen::RowMajor>
@@ -116,10 +69,8 @@ namespace Image {
                     imgSrcLABClone(row, col, 2) = b / n;
                 }
             }
-            const int NThread = 15;
-            Eigen::NonBlockingThreadPool pool(NThread);
-            Eigen::ThreadPoolDevice device(&pool, NThread);
-            computeSalienceValueParallel<Eigen::ThreadPoolDevice>(device, imgSrcLABClone, H, W, salienceMap);
+
+            computeSalienceValueParallel(imgSrcLABClone, H, W, salienceMap);
 
             float maximum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)salienceMap.maximum())(0);
             salienceMap = (salienceMap / maximum).eval() * float(255.0);
@@ -204,8 +155,6 @@ namespace Image {
         void
         processImage(
             const Eigen::Tensor<T, 3, Eigen::RowMajor>& imgSrc,
-            std::vector<Image::Patch>& patches,
-            Eigen::Tensor<int, 3, Eigen::RowMajor>& segMapping,
             Eigen::Tensor<T, 3, Eigen::RowMajor>& imgSaliency)
         {
             imgSaliency.resize(imgSrc.dimension(0), imgSrc.dimension(1), 1);
@@ -226,8 +175,6 @@ namespace Image {
                 savePNG<uint8_t, 3>("./scale", imgSaliency);
 
             optimization<T>(imgSaliency, float(204));
-
-            // populate patches before return
         }
     };
 

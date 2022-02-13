@@ -4,9 +4,20 @@ if [ ! -z "$container_id" ]
 then
     docker rm ${container_id}
 fi
-docker run  --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -it \
---privileged -v /dev/bus/usb:/dev/bus/usb \
--v $(pwd):/home/ImageResize \
--p 1235:8888 \
- --name resizing_container resizing-dev
 
+# Expose the X server on the host.
+sudo xhost +local:root
+# --rm: Make the container ephemeral (delete on exit).
+# -it: Interactive TTY.
+# --gpus all: Expose all GPUs to the container.
+docker run \
+  --rm \
+  -it \
+  --gpus all \
+  -v $(pwd):/home/ImageResize \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  -e DISPLAY=$DISPLAY \
+  -e QT_X11_NO_MITSHM=1 \
+  --privileged \
+  resizing-dev \
+  bash
