@@ -25,6 +25,9 @@ namespace Image {
             const int H, const int W,
             Eigen::Tensor<float, 3, Eigen::RowMajor>& salienceMap)
         {
+#ifdef RESIZING_USE_CUDA
+            return calcSaliencyValueCuda(imgSrcLAB, salienceMap, distC, K);
+#else
             const uint32_t workerSize = 16;
             CustomThreadPool pool(workerSize);
             uint32_t numTasks = H;
@@ -33,9 +36,10 @@ namespace Image {
                 0, H, [this, &salienceMap, &imgSrcLAB, &W](const int& start, const int& end) {
                     for (int r = start; r < end; r++)
                         for (int c = 0; c < W; c++)
-                            salienceMap(r, c, 0) = calcSaliencyValueCPU(imgSrcLAB, r, c, distC, K);
+                            salienceMap(r, c, 0) = calcSaliencyValueCpu(imgSrcLAB, r, c, distC, K);
                 },
                 numTasks);
+#endif
         }
 
         Eigen::Tensor<float, 3, Eigen::RowMajor>
@@ -48,6 +52,7 @@ namespace Image {
             const int C = imgSrcLAB.dimension(2);
             Eigen::Tensor<float, 3, Eigen::RowMajor> imgSrcLABClone = imgSrcLAB;
             Eigen::Tensor<float, 3, Eigen::RowMajor> salienceMap(H, W, 1);
+            
             for (int row = 0; row < H; ++row) {
                 for (int col = 0; col < W; ++col) {
                     int n = 0;

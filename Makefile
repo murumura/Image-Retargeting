@@ -1,4 +1,4 @@
-SOURCES := $(wildcard *.cpp  ./src/numerical/*.cpp  ./src/image/*.cpp ./src/utils/*.cpp)
+SOURCES := $(wildcard *.cpp  ./src/numerical/*.cpp  ./src/image/*.cpp ./src/image/*.cu ./src/utils/*.cpp)
 INCLUDES := $(wildcard *.h  ./src/numerical/*.h  ./src/image/*.h ./src/utils/*.h)
 TESTS := $(wildcard ./test/*.cpp ) 
 DOCKER_DIR:= ./docker

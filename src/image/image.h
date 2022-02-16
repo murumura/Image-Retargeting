@@ -2,10 +2,13 @@
 #define IMAGE_H
 #include <cassert>
 #include <string>
+
 // These macros must be defined before eigen files are included.
-#define EIGEN_USE_THREADS
+#ifdef RESIZING_USE_CUDA
+#define EIGEN_USE_GPU
+#endif
+
 #include <unsupported/Eigen/CXX11/Tensor>
-#include <unsupported/Eigen/CXX11/ThreadPool>
 
 #include <utility>
 namespace Image {

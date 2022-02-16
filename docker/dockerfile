@@ -1,6 +1,6 @@
 
 # To get access to the CUDA development tools, you should use the devel images instead. These are the relevant tags:
-FROM nvidia/cuda:11.4.2-devel-ubuntu20.04
+FROM nvidia/cuda:11.4.3-devel-ubuntu20.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="$PATH:/usr/local/cuda/bin"
 ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64"

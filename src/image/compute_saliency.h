@@ -4,19 +4,17 @@
 #include <image/image.h>
 namespace Image {
 
-    float calcSaliencyValueCPU(
+    float calcSaliencyValueCpu(
         const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
         int calcR,
         int calcC,
         int distC,
         int K);
 
-    float calcSaliencyValueCUDA(
+    void calcSaliencyValueCuda(
         const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
-        int calcR,
-        int calcC,
-        int distC,
-        int K);
+        Eigen::Tensor<float, 3, Eigen::RowMajor>& salienceMap,
+        int distC, int K);
 
 } // namespace Image
 #endif

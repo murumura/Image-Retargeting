@@ -1,6 +1,6 @@
 #include <image/compute_saliency.h>
 namespace Image {
-    float calcSaliencyValueCPU(
+    float calcSaliencyValueCpu(
         const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB, int calcR, int calcC, int distC, int K)
     {
         const int H = imgSrcLAB.dimension(0);
