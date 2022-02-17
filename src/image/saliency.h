@@ -52,7 +52,7 @@ namespace Image {
             const int C = imgSrcLAB.dimension(2);
             Eigen::Tensor<float, 3, Eigen::RowMajor> imgSrcLABClone = imgSrcLAB;
             Eigen::Tensor<float, 3, Eigen::RowMajor> salienceMap(H, W, 1);
-            
+
             for (int row = 0; row < H; ++row) {
                 for (int col = 0; col < W; ++col) {
                     int n = 0;

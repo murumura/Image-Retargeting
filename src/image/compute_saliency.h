@@ -1,6 +1,5 @@
 #ifndef COMPUTE_SALIENCY_H
 #define COMPUTE_SALIENCY_H
-#include <functional>
 #include <image/image.h>
 namespace Image {
 

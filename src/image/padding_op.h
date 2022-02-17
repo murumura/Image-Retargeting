@@ -14,7 +14,7 @@ namespace Image {
         CONSTANT = 0, ///< pad constant values, with string "constant"
         REFLECT = 1, ///< pads with reflect values, with string "reflect" which not replicate edge value
         SYMMETRIC = 2, ///< pads with reflect values, with string "reflect" which replicate edge value
-        EDGE = 3, // /<pads with the edge values, with string "edge"
+        EDGE = 3, ///<pads with the edge values, with string "edge"
     };
 
     // Return lower-cased version of str.
