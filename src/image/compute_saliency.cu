@@ -94,8 +94,6 @@ namespace Image {
     cudaUtils::check(__VA_ARGS__, __FILE__, __LINE__)
 
 #define MAXK 1000
-#define BLOCKDIM_X 8
-#define BLOCKDIM_Y 8
 
     // Round a / b to nearest higher integer value
     uint iDivUp(uint a, uint b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
@@ -116,6 +114,7 @@ namespace Image {
             return;
         float colorDist = 0;
         float posDist = 0;
+        const int L = max(H, W);
         for (int row = 0; row < H; row++)
             for (int col = 0; col < W; col++) {
                 colorDist = 0;
@@ -125,8 +124,8 @@ namespace Image {
                     colorDist += powf((input[i1] - input[i2] + 0.0), 2);
                 }
                 colorDist = sqrt(colorDist);
-                float dRow = (calcR - row + 0.0) / H;
-                float dCol = (calcC - col + 0.0) / W;
+                float dRow = (calcR - row + 0.0) / L;
+                float dCol = (calcC - col + 0.0) / L;
                 posDist = sqrt(dRow * dRow + dCol * dCol);
                 float dist = colorDist / (1.0 + distC * posDist);
                 mink.add(dist);
@@ -134,7 +133,7 @@ namespace Image {
         mink.sort();
         float sum = 0;
         int n = 0;
-        for (n = 0; n <= K && n < mink.size(); n++)
+        for (n = 0; n < K && n < mink.size(); n++)
             sum += diffValues[n];
 
         output[index] = 1 - expf(-sum / n);
@@ -143,7 +142,8 @@ namespace Image {
     void calcSaliencyValueCuda(
         const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
         Eigen::Tensor<float, 3, Eigen::RowMajor>& salienceMap,
-        int distC, int K)
+        int distC,
+        int K)
     {
         const int H = imgSrcLAB.dimension(0);
         const int W = imgSrcLAB.dimension(1);

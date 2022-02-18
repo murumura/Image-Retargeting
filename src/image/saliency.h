@@ -12,6 +12,9 @@
 
 namespace Image {
 
+    static float scaleTable[6] = {
+        1.0, 0.8, 0.5, 0.1, 0.2, 0.1};
+
     class ContextAwareSaliency {
     private:
         int K;
@@ -19,12 +22,13 @@ namespace Image {
         int nScale;
         int scaleU;
         bool saveScaledResults;
-
+        std::vector<float> scalePercents;
         void computeSalienceValueParallel(
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
             const int H, const int W,
             Eigen::Tensor<float, 3, Eigen::RowMajor>& salienceMap)
         {
+
 #ifdef RESIZING_USE_CUDA
             return calcSaliencyValueCuda(imgSrcLAB, salienceMap, distC, K);
 #else
@@ -45,14 +49,14 @@ namespace Image {
         Eigen::Tensor<float, 3, Eigen::RowMajor>
         createSalienceMap(
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
-            int u)
+            int u, bool normalize = true)
         {
             const int H = imgSrcLAB.dimension(0);
             const int W = imgSrcLAB.dimension(1);
             const int C = imgSrcLAB.dimension(2);
-            Eigen::Tensor<float, 3, Eigen::RowMajor> imgSrcLABClone = imgSrcLAB;
+            Eigen::Tensor<float, 3, Eigen::RowMajor> imgSrcLABPatch = imgSrcLAB;
             Eigen::Tensor<float, 3, Eigen::RowMajor> salienceMap(H, W, 1);
-
+            // represent each pixel by the patch surrounding it
             for (int row = 0; row < H; ++row) {
                 for (int col = 0; col < W; ++col) {
                     int n = 0;
@@ -64,26 +68,49 @@ namespace Image {
                             if (c < 0 || c >= W)
                                 continue;
                             ++n;
-                            l += imgSrcLABClone(r, c, 0);
-                            a += imgSrcLABClone(r, c, 1);
-                            b += imgSrcLABClone(r, c, 2);
+                            l += imgSrcLABPatch(r, c, 0);
+                            a += imgSrcLABPatch(r, c, 1);
+                            b += imgSrcLABPatch(r, c, 2);
                         }
                     }
-                    imgSrcLABClone(row, col, 0) = l / n;
-                    imgSrcLABClone(row, col, 1) = a / n;
-                    imgSrcLABClone(row, col, 2) = b / n;
+
+                    imgSrcLABPatch(row, col, 0) = l / n;
+                    imgSrcLABPatch(row, col, 1) = a / n;
+                    imgSrcLABPatch(row, col, 2) = b / n;
                 }
             }
 
-            computeSalienceValueParallel(imgSrcLABClone, H, W, salienceMap);
-
+            if (normalize)
+                normalized(imgSrcLABPatch);
+            computeSalienceValueParallel(imgSrcLABPatch, H, W, salienceMap);
+            float minimum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)salienceMap.minimum())(0);
             float maximum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)salienceMap.maximum())(0);
-            salienceMap = (salienceMap / maximum).eval() * float(255.0);
+            salienceMap = ((salienceMap - minimum) / (maximum - minimum)).eval() * float(255.0);
             return salienceMap;
         }
 
+        void normalized(Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB)
+        {
+            // normalize between 0 ~ 1
+            auto L = imgSrcLAB.template chip<2>(0);
+            auto A = imgSrcLAB.template chip<2>(1);
+            auto B = imgSrcLAB.template chip<2>(2);
+
+            float l_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)L.template cast<float>().template maximum())(0);
+            float a_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)A.template cast<float>().template maximum())(0);
+            float b_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)B.template cast<float>().template maximum())(0);
+
+            float l_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)L.template cast<float>().template minimum())(0);
+            float a_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)A.template cast<float>().template minimum())(0);
+            float b_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)B.template cast<float>().template minimum())(0);
+
+            L = (L - l_min) / (l_max - l_min);
+            A = (A - a_min) / (a_max - a_min);
+            B = (B - b_min) / (b_max - b_min);
+        }
+
         template <typename T>
-        void optimization(Eigen::Tensor<T, 3, Eigen::RowMajor>& imgSaliency, float threshold = 204)
+        void optimization(Eigen::Tensor<T, 3, Eigen::RowMajor>& imgSaliency, float threshold = 214)
         {
             const int H = imgSaliency.dimension(0);
             const int W = imgSaliency.dimension(1);
@@ -92,7 +119,9 @@ namespace Image {
             // optimization
             // (1) normalize accroding to maximum value
             Eigen::Tensor<float, 3, Eigen::RowMajor> S = imgSaliency.template cast<float>();
-            S = (S / maximum) * float(255.0);
+            float min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)S.minimum())(0);
+            float max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)S.maximum())(0);
+            S = ((S - min) / (max - min)).eval() * float(255.0);
 
             std::vector<std::pair<std::pair<int, int>, float>> importants;
 
@@ -144,6 +173,8 @@ namespace Image {
         void setNumScale(int nScale_)
         {
             nScale = nScale_;
+            for (int i = 0; i < nScale; i++)
+                scalePercents.push_back(scaleTable[i]);
         }
 
         void setScaleU(int scaleU_)
@@ -168,7 +199,8 @@ namespace Image {
             Eigen::Tensor<float, 3, Eigen::RowMajor> imgLab;
             Image::Functor::RGBToCIE<float>()(imgSrc.template cast<float>(), imgLab);
 
-            for (int u = scaleU; u != 0; u /= 2) {
+            for (int r = 0; r < nScale; r++) {
+                int u = std::ceil(scalePercents[r] * scaleU);
                 std::cout << "Generating at scale U = " << u << std::endl;
                 Eigen::Tensor<float, 3, Eigen::RowMajor> scaledMap = createSalienceMap(imgLab, u);
                 if (saveScaledResults)
@@ -183,7 +215,7 @@ namespace Image {
         }
     };
 
-    std::shared_ptr<ContextAwareSaliency> createContextAwareSaliency(int K, int distC, int nScale, int scaleU, bool saveScaledResults = false)
+    std::shared_ptr<ContextAwareSaliency> createContextAwareSaliency(int distC, int K, int nScale, int scaleU, bool saveScaledResults = false)
     {
         std::shared_ptr<ContextAwareSaliency> caSaliency = std::make_shared<ContextAwareSaliency>();
         caSaliency->setK(K);

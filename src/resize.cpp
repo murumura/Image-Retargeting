@@ -8,7 +8,7 @@ int main(int argc, const char* argv[])
 {
     struct myOpts
     {
-        std::string InputImage{"./datasets/maple.png"};
+        std::string InputImage{"./datasets/butterfly.png"};
         float Sigma{0.5};
         float SegmentK{300.0};
         int MinSize{100};
@@ -17,8 +17,8 @@ int main(int argc, const char* argv[])
         bool SaveSegment{true};
         int DistC{3};
         int SimilarK{64};
-        int NumScale{3};
-        int ScaleU{4};
+        int NumScale{4};
+        int ScaleU{7};
         bool SaveSaliency{true};
         bool SaveScaledSaliency{true};
         int newH{400};

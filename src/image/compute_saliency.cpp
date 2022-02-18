@@ -6,7 +6,7 @@ namespace Image {
         const int H = imgSrcLAB.dimension(0);
         const int W = imgSrcLAB.dimension(1);
         const int C = imgSrcLAB.dimension(2);
-
+        const int L = std::max(H, W);
         std::function<float(int, int, int, int)> calcColorDist = [&](int r1, int c1, int r2, int c2) {
             Eigen::array<Index, 3> offset1 = {r1, c1, 0};
             Eigen::array<Index, 3> offset2 = {r2, c2, 0};
@@ -21,8 +21,8 @@ namespace Image {
         };
 
         std::function<float(int, int, int, int)> calcPosDist = [&](int r1, int c1, int r2, int c2) {
-            float dRow = (r1 - r2 + 0.0) / H;
-            float dCol = (c1 - c2 + 0.0) / W;
+            float dRow = (r1 - r2 + 0.0) / L;
+            float dCol = (c1 - c2 + 0.0) / L;
             return std::sqrt(dRow * dRow + dCol * dCol);
         };
 

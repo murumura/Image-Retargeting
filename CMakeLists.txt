@@ -13,7 +13,7 @@ set (CMAKE_CXX_EXTENSIONS ON)
 set (CMAKE_INCLUDE_CURRENT_DIR ON)
 
 ######### Options ###########################
-option( USE_CUDA    "Use CUDA to speed up certain parts of the code."  ON )
+option( USE_CUDA    "Use CUDA to speed up certain parts of the code."  OFF )
 #############################################
 
 ###############################################################################
@@ -82,11 +82,12 @@ set (RESIZING_HEADER
     ${CMAKE_SOURCE_DIR}/src/image/pool.h
     ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.h
     ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.cpp
-    ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.cu
     # numerical headers
     ${CMAKE_SOURCE_DIR}/src/numerical/types.h
 )
-
+if(CUDA_FOUND)
+    list(APPEND RESIZING_HEADER  ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.cu)
+endif()
 set (RESIZING_SOURCE
     ${CMAKE_SOURCE_DIR}/src/resize.cpp
 )

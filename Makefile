@@ -7,6 +7,11 @@ export BUILDTYPE ?= default
 buildtype := $(shell echo "$(BUILDTYPE)" | tr "[A-Z]" "[a-z]")
 export BUILDDIR ?= build/default/$(buildtype)
 
+CUDA_DEF := OFF
+ifeq ($(CUDA),1)
+CUDA_DEF = ON
+endif
+
 ifeq ($(shell uname -s), Darwin)
   export JOBS ?= $(shell sysctl -n hw.ncpu)
 else ifeq ($(shell uname -s), Linux)
@@ -43,7 +48,7 @@ clean:
 .PRECIOUS: $(BUILDDIR)/Makefile
 $(BUILDDIR)/Makefile:
 	mkdir -p $(BUILDDIR)
-	cmake -H. -B$(BUILDDIR) -DCMAKE_BUILD_TYPE=$(BUILDTYPE)
+	cmake -H. -B$(BUILDDIR) -DCMAKE_BUILD_TYPE=$(BUILDTYPE) -DUSE_CUDA=$(CUDA_DEF)
 
 .PHONY: docker-run
 docker-run:
