@@ -13,7 +13,7 @@
 namespace Image {
 
     static float scaleTable[6] = {
-        1.0, 0.8, 0.5, 0.1, 0.2, 0.1};
+        0.4, 0.1, 0.1, 0.1, 0.2, 0.1};
 
     class ContextAwareSaliency {
     private:
@@ -24,30 +24,51 @@ namespace Image {
         bool saveScaledResults;
         std::vector<float> scalePercents;
         void computeSalienceValueParallel(
-            const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
+            const Eigen::Tensor<float, 3, Eigen::RowMajor>& singleScalePatch,
+            const Eigen::Tensor<float, 3, Eigen::RowMajor>& multiScalePatch,
             const int H, const int W,
             Eigen::Tensor<float, 3, Eigen::RowMajor>& salienceMap)
         {
 
 #ifdef RESIZING_USE_CUDA
-            return calcSaliencyValueCuda(imgSrcLAB, salienceMap, distC, K);
+            return calcSaliencyValueCuda(singleScalePatch, multiScalePatch, salienceMap, distC, K);
 #else
             const uint32_t workerSize = 16;
             CustomThreadPool pool(workerSize);
             uint32_t numTasks = H;
 
             pool.parallelForLoop(
-                0, H, [this, &salienceMap, &imgSrcLAB, &W](const int& start, const int& end) {
+                0, H, [this, &salienceMap, &singleScalePatch, &multiScalePatch, &W](const int& start, const int& end) {
                     for (int r = start; r < end; r++)
                         for (int c = 0; c < W; c++)
-                            salienceMap(r, c, 0) = calcSaliencyValueCpu(imgSrcLAB, r, c, distC, K);
+                            salienceMap(r, c, 0) = calcSaliencyValueCpu(singleScalePatch, multiScalePatch, r, c, distC, K);
                 },
                 numTasks);
 #endif
         }
 
+        void normalized(Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB)
+        {
+            // normalize between 0 ~ 1
+            auto L = imgSrcLAB.template chip<2>(0);
+            auto A = imgSrcLAB.template chip<2>(1);
+            auto B = imgSrcLAB.template chip<2>(2);
+
+            float l_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)L.template cast<float>().template maximum())(0);
+            float a_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)A.template cast<float>().template maximum())(0);
+            float b_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)B.template cast<float>().template maximum())(0);
+
+            float l_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)L.template cast<float>().template minimum())(0);
+            float a_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)A.template cast<float>().template minimum())(0);
+            float b_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)B.template cast<float>().template minimum())(0);
+
+            L = (L - l_min) / (l_max - l_min);
+            A = (A - a_min) / (a_max - a_min);
+            B = (B - b_min) / (b_max - b_min);
+        }
+
         Eigen::Tensor<float, 3, Eigen::RowMajor>
-        createSalienceMap(
+        createPatchMap(
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
             int u, bool normalize = true)
         {
@@ -55,8 +76,8 @@ namespace Image {
             const int W = imgSrcLAB.dimension(1);
             const int C = imgSrcLAB.dimension(2);
             Eigen::Tensor<float, 3, Eigen::RowMajor> imgSrcLABPatch = imgSrcLAB;
-            Eigen::Tensor<float, 3, Eigen::RowMajor> salienceMap(H, W, 1);
-            // represent each pixel by the patch surrounding it
+
+            // represent each patch by the pixel surrounding it
             for (int row = 0; row < H; ++row) {
                 for (int col = 0; col < W; ++col) {
                     int n = 0;
@@ -82,31 +103,37 @@ namespace Image {
 
             if (normalize)
                 normalized(imgSrcLABPatch);
-            computeSalienceValueParallel(imgSrcLABPatch, H, W, salienceMap);
+            return imgSrcLABPatch;
+        }
+
+        Eigen::Tensor<float, 3, Eigen::RowMajor>
+        createSalienceMap(
+            const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
+            const Eigen::Tensor<float, 3, Eigen::RowMajor>& singleScalePatch,
+            int multiScale, bool normalize = false)
+        {
+            const int H = imgSrcLAB.dimension(0);
+            const int W = imgSrcLAB.dimension(1);
+            const int C = imgSrcLAB.dimension(2);
+            Eigen::Tensor<float, 3, Eigen::RowMajor> multiScalePatch = createPatchMap(imgSrcLAB, multiScale, normalize);
+
+            Eigen::Tensor<float, 3, Eigen::RowMajor> salienceMap(H, W, 1);
+
+            computeSalienceValueParallel(singleScalePatch, multiScalePatch, H, W, salienceMap);
+
             float minimum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)salienceMap.minimum())(0);
             float maximum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)salienceMap.maximum())(0);
             salienceMap = ((salienceMap - minimum) / (maximum - minimum)).eval() * float(255.0);
             return salienceMap;
         }
 
-        void normalized(Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB)
+        void threshingSalience(
+            Eigen::Tensor<float, 3, Eigen::RowMajor>& S,
+            float lower, float lowerDstValue,
+            float higher, float higherDstValue)
         {
-            // normalize between 0 ~ 1
-            auto L = imgSrcLAB.template chip<2>(0);
-            auto A = imgSrcLAB.template chip<2>(1);
-            auto B = imgSrcLAB.template chip<2>(2);
-
-            float l_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)L.template cast<float>().template maximum())(0);
-            float a_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)A.template cast<float>().template maximum())(0);
-            float b_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)B.template cast<float>().template maximum())(0);
-
-            float l_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)L.template cast<float>().template minimum())(0);
-            float a_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)A.template cast<float>().template minimum())(0);
-            float b_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)B.template cast<float>().template minimum())(0);
-
-            L = (L - l_min) / (l_max - l_min);
-            A = (A - a_min) / (a_max - a_min);
-            B = (B - b_min) / (b_max - b_min);
+            S = (S < lower).select(S.constant(lowerDstValue), S);
+            S = (S >= higher).select(S, S.constant(higherDstValue));
         }
 
         template <typename T>
@@ -114,14 +141,12 @@ namespace Image {
         {
             const int H = imgSaliency.dimension(0);
             const int W = imgSaliency.dimension(1);
-            float maximum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)imgSaliency.template cast<float>().template maximum())(0);
 
             // optimization
             // (1) normalize accroding to maximum value
             Eigen::Tensor<float, 3, Eigen::RowMajor> S = imgSaliency.template cast<float>();
-            float min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)S.minimum())(0);
             float max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)S.maximum())(0);
-            S = ((S - min) / (max - min)).eval() * float(255.0);
+            S = (S / max).eval() * float(255.0);
 
             std::vector<std::pair<std::pair<int, int>, float>> importants;
 
@@ -133,7 +158,9 @@ namespace Image {
                 }
             }
 
-            // (3) optimization
+            // (3) optimization: each pixel outside the attended areas is weighted
+            // according to its euclidean distance to the closest attended
+            // pixel
             if (!importants.empty()) {
                 for (int row = 0; row < H; ++row) {
                     for (int col = 0; col < W; ++col) {
@@ -152,6 +179,9 @@ namespace Image {
                     }
                 }
             }
+
+            savePNG<uint8_t, 3>("./optimization" + std::to_string(threshold), S.cast<uint8_t>());
+
             imgSaliency = S.cast<T>();
         }
 
@@ -198,14 +228,14 @@ namespace Image {
 
             Eigen::Tensor<float, 3, Eigen::RowMajor> imgLab;
             Image::Functor::RGBToCIE<float>()(imgSrc.template cast<float>(), imgLab);
-
+            Eigen::Tensor<float, 3, Eigen::RowMajor> singleScalePatch = createPatchMap(imgLab, scaleU, false);
             for (int r = 0; r < nScale; r++) {
                 int u = std::ceil(scalePercents[r] * scaleU);
                 std::cout << "Generating at scale U = " << u << std::endl;
-                Eigen::Tensor<float, 3, Eigen::RowMajor> scaledMap = createSalienceMap(imgLab, u);
+                Eigen::Tensor<float, 3, Eigen::RowMajor> scaledMap = createSalienceMap(imgLab, singleScalePatch, u, false);
                 if (saveScaledResults)
                     savePNG<uint8_t, 3>("./scale" + std::to_string(u), scaledMap.cast<uint8_t>());
-                imgSaliency += (scaledMap / (float)(scaleU - 1)).cast<T>();
+                imgSaliency += (scaledMap / (float)(nScale)).cast<T>();
             }
 
             if (saveScaledResults)

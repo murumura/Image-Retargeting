@@ -53,6 +53,27 @@ namespace Image {
         {
         }
 
+        static Eigen::Tensor<float, 3, Eigen::RowMajor> applyColorMap(
+            const Eigen::Tensor<uint8_t, 3, Eigen::RowMajor>& saliencyMap)
+        {
+            const int H = saliencyMap.dimension(0);
+            const int W = saliencyMap.dimension(1);
+            static std::array<float, 5> rLookUpTable = {255.0, 255.0, 255.0, 0.0, 0.0};
+            static std::array<float, 5> gLookUpTable = {0.0, 125.0, 255.0, 255.0, 0.0};
+            static std::array<float, 5> bLookUpTable = {0.0, 0.0, 0.0, 0.0, 255.0};
+            float step = std::ceil(360.0 / 5.0);
+            Eigen::Tensor<float, 3, Eigen::RowMajor> rgb(H, W, 3);
+            for (int row = 0; row < H; row++)
+                for (int col = 0; col < W; col++) {
+                    float degree = 360 - 360.0 * saliencyMap(row, col, 0) / 255.0;
+                    int idx = (degree / step);
+                    rgb(row, col, 0) = rLookUpTable[idx];
+                    rgb(row, col, 1) = gLookUpTable[idx];
+                    rgb(row, col, 2) = bLookUpTable[idx];
+                }
+            return rgb;
+        }
+
         static void assignSignificance(
             const Eigen::Tensor<uint8_t, 3, Eigen::RowMajor>& saliencyMap,
             const Eigen::Tensor<int, 3, Eigen::RowMajor>& segMapping,
@@ -74,7 +95,7 @@ namespace Image {
                      of pixels within this patch
                    */
                     float patchSize = (float)patches[segId].size;
-                    patchItr->saliencyValue += ((float)(saliencyMap(row, col, 0))) / patchSize;
+                    patchItr->saliencyValue += ((float)(saliencyMap(row, col, 0)) / patchSize);
                 }
 
             auto comparison = [](const Patch& patchA, const Patch& patchB) {
@@ -88,6 +109,9 @@ namespace Image {
                 [&maxSaliencyValue, &minSaliencyValue](Patch& p) {
                     p.saliencyValue = (p.saliencyValue - minSaliencyValue) / (maxSaliencyValue - minSaliencyValue);
                 });
+
+            Eigen::Tensor<float, 3, Eigen::RowMajor> saliencyMapRGB = Wrapping::applyColorMap(saliencyMap);
+            savePNG<uint8_t, 3>("./saliencyMapRGB", saliencyMapRGB.cast<uint8_t>());
         }
 
     private:

@@ -17,8 +17,8 @@ int main(int argc, const char* argv[])
         bool SaveSegment{true};
         int DistC{3};
         int SimilarK{64};
-        int NumScale{4};
-        int ScaleU{7};
+        int NumScale{3};
+        int ScaleU{9};
         bool SaveSaliency{true};
         bool SaveScaledSaliency{true};
         int newH{400};

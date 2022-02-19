@@ -1,18 +1,20 @@
 #include <image/compute_saliency.h>
 namespace Image {
     float calcSaliencyValueCpu(
-        const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB, int calcR, int calcC, int distC, int K)
+        const Eigen::Tensor<float, 3, Eigen::RowMajor>& singleScalePatch,
+        const Eigen::Tensor<float, 3, Eigen::RowMajor>& multiScalePatch,
+        int calcR, int calcC, int distC, int K)
     {
-        const int H = imgSrcLAB.dimension(0);
-        const int W = imgSrcLAB.dimension(1);
-        const int C = imgSrcLAB.dimension(2);
+        const int H = multiScalePatch.dimension(0);
+        const int W = multiScalePatch.dimension(1);
+        const int C = multiScalePatch.dimension(2);
         const int L = std::max(H, W);
         std::function<float(int, int, int, int)> calcColorDist = [&](int r1, int c1, int r2, int c2) {
             Eigen::array<Index, 3> offset1 = {r1, c1, 0};
             Eigen::array<Index, 3> offset2 = {r2, c2, 0};
             Eigen::array<Index, 3> extent = {1, 1, C};
-            Eigen::Tensor<float, 3, Eigen::RowMajor> C1 = imgSrcLAB.slice(offset1, extent);
-            Eigen::Tensor<float, 3, Eigen::RowMajor> C2 = imgSrcLAB.slice(offset2, extent);
+            Eigen::Tensor<float, 3, Eigen::RowMajor> C1 = singleScalePatch.slice(offset1, extent);
+            Eigen::Tensor<float, 3, Eigen::RowMajor> C2 = multiScalePatch.slice(offset2, extent);
 
             float colorDist = std::sqrt(
                 (
