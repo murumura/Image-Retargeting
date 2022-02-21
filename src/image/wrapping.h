@@ -67,6 +67,10 @@ namespace Image {
                 for (int col = 0; col < W; col++) {
                     float degree = 360 - 360.0 * saliencyMap(row, col, 0) / 255.0;
                     int idx = (degree / step);
+                    if (idx < 0)
+                        idx = 0;
+                    else if (idx >= 5)
+                        idx = 4;
                     rgb(row, col, 0) = rLookUpTable[idx];
                     rgb(row, col, 1) = gLookUpTable[idx];
                     rgb(row, col, 2) = bLookUpTable[idx];

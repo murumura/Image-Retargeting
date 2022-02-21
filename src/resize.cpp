@@ -10,15 +10,16 @@ int main(int argc, const char* argv[])
     {
         std::string InputImage{"./datasets/butterfly.png"};
         float Sigma{0.5};
-        float SegmentK{300.0};
-        int MinSize{100};
+        float SegmentK{500.0};
+        int MinSize{30};
         float MergePercent {0.0001};
         float MergeColorDist {20.0};
         bool SaveSegment{true};
         int DistC{3};
         int SimilarK{64};
         int NumScale{3};
-        int ScaleU{9};
+        int ScaleU{4};
+        float Overlap{0.5};
         bool SaveSaliency{true};
         bool SaveScaledSaliency{true};
         int newH{400};
@@ -32,11 +33,12 @@ int main(int argc, const char* argv[])
         {"--MinSize", &myOpts::MinSize, "Segment area threshold"},
         {"--MergePercent", &myOpts::MergePercent, "Additional merge area threshold (in percentage) threshold"},
         {"--MergeColorDist", &myOpts::MergeColorDist, "Additional merge color distance threshold"},
-        {"--SaveSegment", &myOpts::SaveSegment, "Whether to save segmentation result."},
+        {"--SaveSegment", &myOpts::SaveSegment, "Whether to save segmentation (with each pixel represent by their original color) result."},
         {"--DistC", &myOpts::DistC, "Scale variable of position distance"},
         {"--SimilarK", &myOpts::SimilarK, "K most similar patches"},
         {"--NumScale", &myOpts::NumScale, "Number of Patches Scale"},
         {"--ScaleU", &myOpts::ScaleU, "Patches Scale value"},
+        {"--Overlap", &myOpts::Overlap, "Patches Overlap percents"},
         {"--SaveScaledSaliency", &myOpts::SaveScaledSaliency, "Whether to save saliency result of each scale."},
         {"--SaveSaliency", &myOpts::SaveSaliency, "Whether to save saliency result."},
         {"--newH", &myOpts::newH, "Resizing Height."},

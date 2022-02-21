@@ -41,6 +41,8 @@ Make sure Eigen3 can be found by your build system.
 ## Install CUDA Toolkit
 Download and install the CUDA Toolkit (11.4 on my computer) for your corresponding platform. For system requirements and installation instructions of cuda toolkit, please refer to the [Linux Installation Guide](https://docs.nvidia.com/cuda/cuda-installation-guide-linux/), and the [Windows Installation Guide](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html).
 
+Make sure the environment variable CUDA_PATH is set to the CUDA Toolkit install directory.
+
 Also Make sure NVCC and cuda-toolkit can be found by your build system.
 
 ## Run test suite

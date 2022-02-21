@@ -4,6 +4,7 @@
 #include <functional>
 #include <image/filter.h>
 #include <image/image.h>
+#include <image/imageIO.h>
 #include <image/wrapping.h>
 #include <iostream>
 #include <map>
@@ -276,6 +277,64 @@ namespace Image {
             }
         }
 
+        void additionalMerge(
+            Eigen::Tensor<int, 3, Eigen::RowMajor>& segMapping,
+            std::map<int, Eigen::Tensor<float, 3, Eigen::RowMajor>>& patchAvgColors,
+            std::map<int, int>& patchCounts,
+            int& nSegment)
+        {
+            const int H = segMapping.dimension(0);
+            const int W = segMapping.dimension(1);
+            const int patchMinSize = pixelInPatch * H * W;
+
+            std::function<float(int, int)> calcColorDist = [&](int segIdA, int segIdB) {
+                float colorDist = 0;
+                // clang-format off
+                    colorDist = std::sqrt(
+                        (
+                            (Eigen::Tensor<float, 0, Eigen::RowMajor>)(patchAvgColors[segIdA] - patchAvgColors[segIdB]).square().sum().eval()
+                        )(0)
+                    );
+                // clang-format on
+                return colorDist;
+            };
+
+            std::function<void(int, int)> changeMapping = [&](int fromID, int toID) {
+                for (int r = 0; r < H; r++)
+                    for (int c = 0; c < W; c++)
+                        if (segMapping(r, c, 0) == fromID)
+                            segMapping(r, c, 0) = toID;
+            };
+            //TODO : undirected DFS
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    // Take the right, left, top and down pixel
+                    for (int delta = -1; delta <= 1; delta += 2) {
+                        for (int delta_c = 0, delta_r = 1; delta_c <= 1; delta_c++ || delta_r--) {
+                            int r2 = r + delta * delta_r;
+                            int c2 = c + delta * delta_c;
+                            if (r2 >= 0 && r2 < H && c2 >= 0 && c2 < W) {
+                                int segIdpA = segMapping(r, c, 0);
+                                int segIdpB = segMapping(r2, c2, 0);
+                                if (segIdpA != segIdpB && ((std::min(patchCounts[segIdpA], patchCounts[segIdpB]) < patchMinSize) || calcColorDist(segIdpA, segIdpB) <= adjColorDist)) {
+                                    if (patchCounts[segIdpA] < patchCounts[segIdpB])
+                                        std::swap(segIdpA, segIdpB);
+                                    float ratioA = float(patchCounts[segIdpA]) / float(patchCounts[segIdpA] + patchCounts[segIdpB]);
+                                    float ratioB = float(patchCounts[segIdpB]) / float(patchCounts[segIdpA] + patchCounts[segIdpB]);
+                                    patchAvgColors[segIdpA] = patchAvgColors[segIdpA] * ratioA + patchAvgColors[segIdpB] * ratioB;
+                                    patchCounts[segIdpA] += patchCounts[segIdpB];
+                                    patchCounts.erase(segIdpB);
+                                    patchAvgColors.erase(segIdpB);
+                                    changeMapping(segIdpB, segIdpA);
+                                    nSegment--;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         template <typename T>
         void
         outputSegResult(
@@ -285,11 +344,25 @@ namespace Image {
             Eigen::Tensor<T, 3, Eigen::RowMajor>& imgDst)
         {
             imgDst.setZero();
-            int C = imgSrc.dimension(2);
-            int H = imgSrc.dimension(0);
-            int W = imgSrc.dimension(1);
+            const int C = imgSrc.dimension(2);
+            const int H = imgSrc.dimension(0);
+            const int W = imgSrc.dimension(1);
             int nSegment = ((Eigen::Tensor<int, 0, Eigen::RowMajor>)segMapping.maximum())(0) + 1;
             std::cout << "Num Segments: " << nSegment << std::endl;
+
+            // random color mapping as specified in original paper
+            // Efficient Graph-Based Image Segmentation(2004)](http://people.cs.uchicago.edu/~pff/papers/seg-ijcv.pdf)
+            Eigen::Tensor<T, 3, Eigen::RowMajor> origSegments(H, W, C);
+            for (int r = 0; r < H; r++)
+                for (int c = 0; c < W; c++) {
+                    int segId = segMapping(r, c, 0);
+                    Eigen::array<Index, 3> offset = {r, c, 0};
+                    Eigen::array<Index, 3> extent = {1, 1, C};
+                    origSegments.template slice(offset, extent) = randomColor<T>(segId, C);
+                }
+
+            savePNG<uint8_t, 3>("./original-segmentation", origSegments.template cast<uint8_t>());
+
             if (pixelInPatch > 0 && adjColorDist > 0) {
                 Eigen::Tensor<float, 3, Eigen::RowMajor> emptyColor(1, 1, C);
                 emptyColor.setZero();
@@ -323,55 +396,8 @@ namespace Image {
                     patchAvgColors.insert({segId, (patchColors[segId] / (float)patchCounts[segId]).eval()});
                 }
 
-                int patchMinSize = pixelInPatch * H * W;
-
-                std::function<float(int, int)> calcColorDist = [&](int segIdA, int segIdB) {
-                    float colorDist = 0;
-                    // clang-format off
-                    colorDist = std::sqrt(
-                        (
-                            (Eigen::Tensor<float, 0, Eigen::RowMajor>)(patchAvgColors[segIdA] - patchAvgColors[segIdB]).square().sum().eval()
-                        )(0)
-                    );
-                    // clang-format on
-                    return colorDist;
-                };
-
-                std::function<void(int, int)> changeMapping = [&](int fromID, int toID) {
-                    for (int r = 0; r < H; r++)
-                        for (int c = 0; c < W; c++)
-                            if (segMapping(r, c, 0) == fromID)
-                                segMapping(r, c, 0) = toID;
-                };
-
                 // additional merge
-                for (int r = 0; r < H; r++) {
-                    for (int c = 0; c < W; c++) {
-                        // Take the right, left, top and down pixel
-                        for (int delta = -1; delta <= 1; delta += 2) {
-                            for (int delta_c = 0, delta_r = 1; delta_c <= 1; delta_c++ || delta_r--) {
-                                int r2 = r + delta * delta_r;
-                                int c2 = c + delta * delta_c;
-                                if (r2 >= 0 && r2 < H && c2 >= 0 && c2 < W) {
-                                    int segIdpA = segMapping(r, c, 0);
-                                    int segIdpB = segMapping(r2, c2, 0);
-                                    if (segIdpA != segIdpB && ((patchCounts[segIdpA] < patchMinSize || patchCounts[segIdpB] < patchMinSize) || calcColorDist(segIdpA, segIdpB) <= adjColorDist)) {
-                                        if (patchCounts[segIdpA] < patchCounts[segIdpB])
-                                            std::swap(segIdpA, segIdpB);
-                                        float ratioA = float(patchCounts[segIdpA]) / float(patchCounts[segIdpA] + patchCounts[segIdpB]);
-                                        float ratioB = float(patchCounts[segIdpB]) / float(patchCounts[segIdpA] + patchCounts[segIdpB]);
-                                        patchAvgColors[segIdpA] = patchAvgColors[segIdpA] * ratioA + patchAvgColors[segIdpB] * ratioB;
-                                        patchCounts[segIdpA] += patchCounts[segIdpB];
-                                        patchCounts.erase(segIdpB);
-                                        patchAvgColors.erase(segIdpB);
-                                        changeMapping(segIdpB, segIdpA);
-                                        nSegment--;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                additionalMerge(segMapping, patchAvgColors, patchCounts, nSegment);
 
                 std::cout << "Num Segments: " << nSegment << std::endl;
                 // mapping result to output image
@@ -389,17 +415,6 @@ namespace Image {
                     patches.back().setPatchColor(patchAvgColors[segId]);
                 }
                 std::cout << "Num patches: " << patches.size() << std::endl;
-            }
-            else {
-                // random color mapping as specified in original paper
-                // Efficient Graph-Based Image Segmentation(2004)](http://people.cs.uchicago.edu/~pff/papers/seg-ijcv.pdf)
-                for (int r = 0; r < H; r++)
-                    for (int c = 0; c < W; c++) {
-                        int segId = segMapping(r, c, 0);
-                        Eigen::array<Index, 3> offset = {r, c, 0};
-                        Eigen::array<Index, 3> extent = {1, 1, C};
-                        imgDst.template slice(offset, extent) = randomColor<T>(segId, C);
-                    }
             }
         }
 
