@@ -9,6 +9,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <stack>
 #include <utility>
 #include <vector>
 namespace Image {
@@ -305,34 +306,72 @@ namespace Image {
                         if (segMapping(r, c, 0) == fromID)
                             segMapping(r, c, 0) = toID;
             };
-            //TODO : undirected DFS
-            for (int r = 0; r < H; r++) {
-                for (int c = 0; c < W; c++) {
-                    // Take the right, left, top and down pixel
-                    for (int delta = -1; delta <= 1; delta += 2) {
-                        for (int delta_c = 0, delta_r = 1; delta_c <= 1; delta_c++ || delta_r--) {
-                            int r2 = r + delta * delta_r;
-                            int c2 = c + delta * delta_c;
-                            if (r2 >= 0 && r2 < H && c2 >= 0 && c2 < W) {
-                                int segIdpA = segMapping(r, c, 0);
-                                int segIdpB = segMapping(r2, c2, 0);
-                                if (segIdpA != segIdpB && ((std::min(patchCounts[segIdpA], patchCounts[segIdpB]) < patchMinSize) || calcColorDist(segIdpA, segIdpB) <= adjColorDist)) {
-                                    if (patchCounts[segIdpA] < patchCounts[segIdpB])
-                                        std::swap(segIdpA, segIdpB);
-                                    float ratioA = float(patchCounts[segIdpA]) / float(patchCounts[segIdpA] + patchCounts[segIdpB]);
-                                    float ratioB = float(patchCounts[segIdpB]) / float(patchCounts[segIdpA] + patchCounts[segIdpB]);
-                                    patchAvgColors[segIdpA] = patchAvgColors[segIdpA] * ratioA + patchAvgColors[segIdpB] * ratioB;
-                                    patchCounts[segIdpA] += patchCounts[segIdpB];
-                                    patchCounts.erase(segIdpB);
-                                    patchAvgColors.erase(segIdpB);
-                                    changeMapping(segIdpB, segIdpA);
-                                    nSegment--;
-                                }
+
+            std::function<bool(int, int)> isInside = [&](int row, int col) {
+                return row >= 0 && row < H && col >= 0 && col < W;
+            };
+
+            std::function<bool(int, int, int, int)>
+                mergeable = [&](int r1, int c1, int r2, int c2) {
+                    if (!isInside(r1, c1) || !isInside(r2, c2))
+                        return false;
+                    int segIdA = segMapping(r1, c1, 0);
+                    int segIdB = segMapping(r2, c2, 0);
+
+                    if (segIdA == segIdB)
+                        return false;
+                    bool areaMerge = std::min(patchCounts[segIdA], patchCounts[segIdB]) < patchMinSize;
+                    bool similarColor = calcColorDist(segIdA, segIdB) <= adjColorDist;
+                    return (areaMerge || similarColor);
+                };
+
+            std::function<void(int, int, int, int)> merge = [&](int r1, int c1, int r2, int c2) {
+                int segIdpA = segMapping(r1, c1, 0);
+                int segIdpB = segMapping(r2, c2, 0);
+                if (patchCounts[segIdpA] < patchCounts[segIdpB])
+                    std::swap(segIdpA, segIdpB);
+                float ratioA = float(patchCounts[segIdpA]) / float(patchCounts[segIdpA] + patchCounts[segIdpB]);
+                float ratioB = float(patchCounts[segIdpB]) / float(patchCounts[segIdpA] + patchCounts[segIdpB]);
+                patchAvgColors[segIdpA] = patchAvgColors[segIdpA] * ratioA + patchAvgColors[segIdpB] * ratioB;
+                patchCounts[segIdpA] += patchCounts[segIdpB];
+                patchCounts.erase(segIdpB);
+                patchAvgColors.erase(segIdpB);
+                changeMapping(segIdpB, segIdpA);
+                nSegment--;
+            };
+
+            std::stack<std::tuple<int, int>> stk;
+
+            Eigen::Tensor<bool, 2, Eigen::RowMajor> visited(H, W);
+            visited.setConstant(false);
+
+            std::function<void(int row, int col)> dfs = [&](int row, int col) {
+                stk.push(std::make_tuple(row, col));
+                while (!stk.empty()) {
+                    int r1 = std::get<0>(stk.top());
+                    int c1 = std::get<1>(stk.top());
+                    stk.pop();
+                    if (visited(r1, c1) || !isInside(r1, c1))
+                        continue;
+
+                    for (int delta_r = -1; delta_r <= 1; delta_r++)
+                        for (int delta_c = -1; delta_c <= 1; delta_c++) {
+                            int r2 = r1 + delta_r;
+                            int c2 = c1 + delta_c;
+                            if (r2 == r1 && c2 == c1)
+                                continue;
+                            if (mergeable(r1, c1, r2, c2)) {
+                                merge(r1, c1, r2, c2);
+                                stk.push(std::make_tuple(r2, c2));
                             }
                         }
-                    }
                 }
-            }
+                visited(row, col) = true;
+            };
+
+            for (int row = 0; row < H; ++row)
+                for (int col = 0; col < W; col++)
+                    dfs(row, col);
         }
 
         template <typename T>
@@ -361,7 +400,7 @@ namespace Image {
                     origSegments.template slice(offset, extent) = randomColor<T>(segId, C);
                 }
 
-            savePNG<uint8_t, 3>("./original-segmentation", origSegments.template cast<uint8_t>());
+            savePNG<uint8_t, 3>("./original-segmentation" + std::to_string(k) + "-" + std::to_string(minSize), origSegments.template cast<uint8_t>());
 
             if (pixelInPatch > 0 && adjColorDist > 0) {
                 Eigen::Tensor<float, 3, Eigen::RowMajor> emptyColor(1, 1, C);

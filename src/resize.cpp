@@ -10,8 +10,8 @@ int main(int argc, const char* argv[])
     {
         std::string InputImage{"./datasets/butterfly.png"};
         float Sigma{0.5};
-        float SegmentK{500.0};
-        int MinSize{30};
+        float SegmentK{640.0};
+        int MinSize{3};
         float MergePercent {0.0001};
         float MergeColorDist {20.0};
         bool SaveSegment{true};
@@ -72,7 +72,7 @@ int main(int argc, const char* argv[])
     graphSeg->processImage(input, patches, segMapping, segResult);
 
     if (args.SaveSegment)
-        Image::savePNG("./segmentation", segResult);
+        Image::savePNG("./segmentation"+std::to_string( args.SegmentK)+"-"+std::to_string(args.MinSize), segResult);
     
     auto caSaliency = Image::createContextAwareSaliency(
         args.DistC, 
@@ -93,4 +93,5 @@ int main(int argc, const char* argv[])
         Image::savePNG("./saliency", saliencyMap);
     
     Image::Wrapping::assignSignificance(saliencyMap, segMapping, significanceMap, patches);
+    
 }
