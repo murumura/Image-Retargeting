@@ -9,16 +9,16 @@ int main(int argc, const char* argv[])
     struct myOpts
     {
         std::string InputImage{"./datasets/butterfly.png"};
-        float Sigma{0.5};
-        float SegmentK{640.0};
-        int MinSize{3};
+        float Sigma{0.3};
+        float SegmentK{1750.0};
+        int MinSize{100};
         float MergePercent {0.0001};
         float MergeColorDist {20.0};
         bool SaveSegment{true};
         int DistC{3};
         int SimilarK{64};
-        int NumScale{3};
-        int ScaleU{4};
+        int NumScale{4};
+        int ScaleU{9};
         float Overlap{0.5};
         bool SaveSaliency{true};
         bool SaveScaledSaliency{true};
@@ -89,9 +89,12 @@ int main(int argc, const char* argv[])
 
     caSaliency->processImage(input, saliencyMap);
 
-    if (args.SaveScaledSaliency)
+    if (args.SaveSaliency)
         Image::savePNG("./saliency", saliencyMap);
     
     Image::Wrapping::assignSignificance(saliencyMap, segMapping, significanceMap, patches);
+    
+    if (args.SaveSaliency)
+        Image::savePNG<uint8_t, 3>("./significance", significanceMap.cast<uint8_t>());
     
 }

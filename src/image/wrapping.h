@@ -4,6 +4,9 @@
 #include <iostream>
 #include <vector>
 namespace Image {
+    const int r = 0;
+    const int g = 1;
+    const int b = 2;
 
     class Patch {
     public:
@@ -36,15 +39,16 @@ namespace Image {
             patchColor = patchColor_;
         }
 
-        void setSignificanceColor(const Eigen::Tensor<float, 3, Eigen::RowMajor>& significanceColor_)
-        {
-            significanceColor = significanceColor_;
-        }
-
         bool operator<(const Patch& p) const
         {
             return segmentId < p.segmentId;
         }
+    };
+
+    class QuadMesh {
+       public:
+        std::vector<Eigen::Vector2d> vertices;
+        std::vector<Eigen::Vector2d> edges;
     };
 
     class Wrapping {
@@ -58,10 +62,11 @@ namespace Image {
         {
             const int H = saliencyMap.dimension(0);
             const int W = saliencyMap.dimension(1);
-            static std::array<float, 5> rLookUpTable = {255.0, 255.0, 255.0, 0.0, 0.0};
-            static std::array<float, 5> gLookUpTable = {0.0, 125.0, 255.0, 255.0, 0.0};
-            static std::array<float, 5> bLookUpTable = {0.0, 0.0, 0.0, 0.0, 255.0};
-            float step = std::ceil(360.0 / 5.0);
+            static const int nColorMapping = 5;
+            static std::array<float, nColorMapping> rLookUpTable = {255.0, 255.0, 255.0, 0.0, 0.0};
+            static std::array<float, nColorMapping> gLookUpTable = {0.0, 125.0, 255.0, 255.0, 0.0};
+            static std::array<float, nColorMapping> bLookUpTable = {0.0, 0.0, 0.0, 0.0, 255.0};
+            float step = std::ceil(360.0 / nColorMapping);
             Eigen::Tensor<float, 3, Eigen::RowMajor> rgb(H, W, 3);
             for (int row = 0; row < H; row++)
                 for (int col = 0; col < W; col++) {
@@ -69,11 +74,11 @@ namespace Image {
                     int idx = (degree / step);
                     if (idx < 0)
                         idx = 0;
-                    else if (idx >= 5)
-                        idx = 4;
-                    rgb(row, col, 0) = rLookUpTable[idx];
-                    rgb(row, col, 1) = gLookUpTable[idx];
-                    rgb(row, col, 2) = bLookUpTable[idx];
+                    else if (idx >= nColorMapping)
+                        idx = nColorMapping - 1;
+                    rgb(row, col, r) = rLookUpTable[idx];
+                    rgb(row, col, g) = gLookUpTable[idx];
+                    rgb(row, col, b) = bLookUpTable[idx];
                 }
             return rgb;
         }
@@ -86,6 +91,11 @@ namespace Image {
         {
             const int H = segMapping.dimension(0);
             const int W = segMapping.dimension(1);
+            significanceMap.resize(H, W, 3);
+            significanceMap.setZero();
+            // Create rgb-saliance map for visualization
+            Eigen::Tensor<float, 3, Eigen::RowMajor> saliencyMapRGB = Wrapping::applyColorMap(saliencyMap);
+            savePNG<uint8_t, 3>("./saliencyMapRGB", saliencyMapRGB.cast<uint8_t>());
 
             for (int row = 0; row < H; row++)
                 for (int col = 0; col < W; col++) {
@@ -94,19 +104,22 @@ namespace Image {
                     std::vector<Patch>::iterator patchItr = std::find_if(patches.begin(), patches.end(),
                         [&segId](const Patch& patch) { return patch.segmentId == segId; });
 
-                    /*
-                     each segmented patch is assigned a significance value by averaging the saliency values
-                     of pixels within this patch
-                   */
-                    float patchSize = (float)patches[segId].size;
+                    // each segmented patch is assigned a significance value by averaging the saliency values
+                    // of pixels within this patch
+                    float patchSize = (float)patchItr->size;
                     patchItr->saliencyValue += ((float)(saliencyMap(row, col, 0)) / patchSize);
+
+                    // assign significance rgb color to each segmented patch
+                    Eigen::array<Index, 3> offset = {row, col, 0};
+                    Eigen::array<Index, 3> extent = {1, 1, 3};
+                    patchItr->significanceColor += saliencyMapRGB.slice(offset, extent).cast<float>() / patchSize;
                 }
 
             auto comparison = [](const Patch& patchA, const Patch& patchB) {
                 return patchA.saliencyValue < patchB.saliencyValue;
             };
 
-            // Normalized saliency value
+            // Normalized saliency value of each patch to 0 - 1
             float maxSaliencyValue = (*(std::max_element(patches.begin(), patches.end(), comparison))).saliencyValue;
             float minSaliencyValue = (*(std::min_element(patches.begin(), patches.end(), comparison))).saliencyValue;
             std::for_each(patches.begin(), patches.end(),
@@ -114,8 +127,17 @@ namespace Image {
                     p.saliencyValue = (p.saliencyValue - minSaliencyValue) / (maxSaliencyValue - minSaliencyValue);
                 });
 
-            Eigen::Tensor<float, 3, Eigen::RowMajor> saliencyMapRGB = Wrapping::applyColorMap(saliencyMap);
-            savePNG<uint8_t, 3>("./saliencyMapRGB", saliencyMapRGB.cast<uint8_t>());
+            // Merge segementation and saliance value to create significance map
+            for (int row = 0; row < H; row++)
+                for (int col = 0; col < W; col++) {
+                    int segId = segMapping(row, col, 0);
+
+                    std::vector<Patch>::iterator patchItr = std::find_if(patches.begin(), patches.end(),
+                        [&segId](const Patch& patch) { return patch.segmentId == segId; });
+                    Eigen::array<Index, 3> offset = {row, col, 0};
+                    Eigen::array<Index, 3> extent = {1, 1, 3};
+                    significanceMap.slice(offset, extent) = patchItr->significanceColor;
+                }
         }
 
     private:
