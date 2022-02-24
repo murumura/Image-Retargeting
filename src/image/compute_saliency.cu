@@ -111,7 +111,7 @@ namespace Image {
         const float* __restrict__ multiScalePatch,
         float* __restrict__ output,
         const int distC, const int K,
-        const int H, const int W, const int C)
+        const int B, const int H, const int W, const int C)
     {
         int index = threadIdx.x + (blockDim.x * blockIdx.x);
 
@@ -189,7 +189,7 @@ namespace Image {
         CUDA_CHECK(cudaMemset(imgOutDevice, 0.0, outTensorBytes));
 
         // Launch kernel
-        calcSaliencyCudaKernel<<<nBlock, nThread>>>(singleScaleDevice, multiScaleDevice, imgOutDevice, distC, K, H, W, C);
+        calcSaliencyCudaKernel<<<nBlock, nThread>>>(singleScaleDevice, multiScaleDevice, imgOutDevice, distC, K, B, H, W, C);
         CUDA_CHECK(cudaGetLastError());
 
         // Blocks until the device has completed all preceding requested tasks

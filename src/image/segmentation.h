@@ -148,20 +148,19 @@ namespace Image {
         float adjColorDist;
 
         // Pre-filter the image
-        template <typename T>
+
         void smooth(
-            const Eigen::Tensor<T, 3, Eigen::RowMajor>& img,
-            Eigen::Tensor<T, 3, Eigen::RowMajor>& imgFiltered)
+            const Eigen::Tensor<float, 3, Eigen::RowMajor>& img,
+            Eigen::Tensor<float, 3, Eigen::RowMajor>& imgFiltered)
         {
             ///< smoothing image using 3x3 kernel
             GaussianBlur(img, imgFiltered, "reflect", sigma, 1.5f);
         }
 
         // Build the graph between each pixels
-        template <typename T>
         void buildGraph(
             std::vector<Edge>& edges,
-            const Eigen::Tensor<T, 3, Eigen::RowMajor>& imgFiltered)
+            const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgFiltered)
         {
             int height = imgFiltered.dimension(0);
             int width = imgFiltered.dimension(1);
@@ -198,10 +197,9 @@ namespace Image {
         }
 
         // Segment the graph
-        template <typename T>
         void segmentGraph(
             std::vector<Edge>& edges,
-            const Eigen::Tensor<T, 3, Eigen::RowMajor>& imgFiltered,
+            const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgFiltered,
             std::shared_ptr<PointSet>& es)
         {
             int height = imgFiltered.dimension(0);
@@ -214,7 +212,7 @@ namespace Image {
             es = std::make_shared<PointSet>(height * width);
 
             // Thresholds
-            std::vector<float> thresholds(totalPoints, 1 / k);
+            std::vector<float> thresholds(totalPoints, k);
 
             for (int i = 0; i < edges.size(); i++) {
 
@@ -469,19 +467,22 @@ namespace Image {
             // For storing final segment results
             imgDst.resize(imgSrc.dimension(0), imgSrc.dimension(1), imgSrc.dimension(2));
 
-            // Filter graph
-            Eigen::Tensor<T, 3, Eigen::RowMajor> imgFiltered;
-            smooth<T>(imgSrc, imgFiltered);
+            // Convert image to float type
+            Eigen::Tensor<float, 3, Eigen::RowMajor> imgSrcFloat = imgSrc.template cast<float>();
+
+            // sommthing image
+            Eigen::Tensor<float, 3, Eigen::RowMajor> imgFiltered;
+            smooth(imgSrcFloat, imgFiltered);
 
             // Build graph
             std::vector<Edge> edges;
-            buildGraph<T>(edges, imgFiltered);
+            buildGraph(edges, imgFiltered);
 
             // Pointer to edge information of paired pixels
             std::shared_ptr<PointSet> es = nullptr;
 
             // Segment graph
-            segmentGraph<T>(edges, imgFiltered, es);
+            segmentGraph(edges, imgFiltered, es);
 
             // Remove small areas
             filterSmallAreas(edges, es);

@@ -8,10 +8,10 @@ int main(int argc, const char* argv[])
 {
     struct myOpts
     {
-        std::string InputImage{"./datasets/butterfly.png"};
+        std::string InputImage{"./datasets/heartsmall.png"};
         float Sigma{0.5};
         float SegmentK{500.0};
-        int MinSize{50};
+        int MinSize{20};
         float MergePercent {0.0001};
         float MergeColorDist {20.0};
         bool SaveSegment{true};
@@ -71,7 +71,7 @@ int main(int argc, const char* argv[])
 
     if (args.SaveSegment)
         Image::savePNG("./segmentation"+std::to_string(args.SegmentK)+"-"+std::to_string(args.MinSize), segResult);
-    /*
+    
     auto caSaliency = Image::createContextAwareSaliency(
         args.DistC, 
         args.SimilarK, 
@@ -94,5 +94,5 @@ int main(int argc, const char* argv[])
     
     if (args.SaveSaliency)
         Image::savePNG<uint8_t, 3>("./significance", significanceMap.cast<uint8_t>());
-    */
+    
 }

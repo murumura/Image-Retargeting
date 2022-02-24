@@ -27,17 +27,17 @@ namespace Image {
         void computeSalienceValueParallel(
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& singleScalePatch,
             const Eigen::Tensor<float, 4, Eigen::RowMajor>& multiScalePatch,
-            const int H, const int W,
             Eigen::Tensor<float, 3, Eigen::RowMajor>& salienceMap)
         {
-
+            const int H = multiScalePatch.dimension(1);
+            const int W = multiScalePatch.dimension(2);
 #ifdef RESIZING_USE_CUDA
             return calcSaliencyValueCuda(singleScalePatch, multiScalePatch, salienceMap, distC, K);
 #else
             const uint32_t workerSize = 16;
             CustomThreadPool pool(workerSize);
             uint32_t numTasks = H;
-
+            // calculate each row in parallelForLoop
             pool.parallelForLoop(
                 0, H, [this, &salienceMap, &singleScalePatch, &multiScalePatch, &W](const int& start, const int& end) {
                     for (int r = start; r < end; r++)
@@ -106,7 +106,7 @@ namespace Image {
 
             Eigen::Tensor<float, 3, Eigen::RowMajor> salienceMap(H, W, 1);
 
-            computeSalienceValueParallel(singleScalePatch, multiScalePatches, H, W, salienceMap);
+            computeSalienceValueParallel(singleScalePatch, multiScalePatches, salienceMap);
 
             // The saliency map S_i^r at each scale is normalized to the range [0,1]
             normalizeSaliency(salienceMap);
