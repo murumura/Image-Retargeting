@@ -12,8 +12,8 @@
 
 namespace Image {
 
-    static float scaleTable[6] = {1.0, 0.5, 0.25, 0.1, 0.2, 0.1};
-
+    static float Rq[3] = {1.0, 0.5, 0.25};
+    static float R[5] = {1.0, 0.8, 0.5, 0.3, 0.2};
     class ContextAwareSaliency {
     private:
         int K;
@@ -22,10 +22,11 @@ namespace Image {
         int scaleU;
         bool saveScaledResults;
         std::vector<float> scalePercents;
+        std::vector<float> scaleUSets;
 
         void computeSalienceValueParallel(
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& singleScalePatch,
-            const Eigen::Tensor<float, 3, Eigen::RowMajor>& multiScalePatch,
+            const Eigen::Tensor<float, 4, Eigen::RowMajor>& multiScalePatch,
             const int H, const int W,
             Eigen::Tensor<float, 3, Eigen::RowMajor>& salienceMap)
         {
@@ -88,21 +89,27 @@ namespace Image {
         createSalienceMap(
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& singleScalePatch,
-            int multiScale)
+            const std::vector<int>& multiScales)
         {
+            const int B = multiScales.size();
             const int H = imgSrcLAB.dimension(0);
             const int W = imgSrcLAB.dimension(1);
             const int C = imgSrcLAB.dimension(2);
-            Eigen::Tensor<float, 3, Eigen::RowMajor> multiScalePatch = createPatchMap(imgSrcLAB, multiScale);
+            Eigen::Tensor<float, 4, Eigen::RowMajor> multiScalePatches(B, H, W, C);
+
+            for (int i = 0; i < multiScales.size(); i++) {
+                Eigen::array<Index, 4> offset = {i, 0, 0, 0};
+                Eigen::array<Index, 4> extent = {1, H, W, C};
+                multiScalePatches.slice(offset, extent)
+                    = createPatchMap(imgSrcLAB, multiScales[i]).reshape(Eigen::array<Index, 4>{1, H, W, C});
+            }
 
             Eigen::Tensor<float, 3, Eigen::RowMajor> salienceMap(H, W, 1);
 
-            computeSalienceValueParallel(singleScalePatch, multiScalePatch, H, W, salienceMap);
+            computeSalienceValueParallel(singleScalePatch, multiScalePatches, H, W, salienceMap);
 
-            float minimum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)salienceMap.minimum())(0);
-            float maximum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)salienceMap.maximum())(0);
-            salienceMap = ((salienceMap - minimum) / (maximum)).eval();
-
+            // The saliency map S_i^r at each scale is normalized to the range [0,1]
+            normalizeSaliency(salienceMap);
             return salienceMap;
         }
 
@@ -111,6 +118,13 @@ namespace Image {
             float minimum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)S.minimum())(0);
             float maximum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)S.maximum())(0);
             S = ((S - minimum) / (maximum)).eval();
+        }
+
+        void normalizeSaliency(Eigen::Tensor<float, 3, Eigen::RowMajor>& S)
+        {
+            float minimum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)S.minimum())(0);
+            float maximum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)S.maximum())(0);
+            S = ((S - minimum) / (maximum - minimum)).eval();
         }
 
         void optimization(Eigen::Tensor<float, 3, Eigen::RowMajor>& S, float threshold = 0.8)
@@ -122,13 +136,13 @@ namespace Image {
             // (1) normalize accroding to maximum value
             supressBackground(S);
 
-            std::vector<std::pair<std::pair<int, int>, float>> importants;
+            std::vector<std::pair<std::pair<int, int>, float>> attendedAreas;
 
             // (2) record important part information
             for (int row = 0; row < H; ++row) {
                 for (int col = 0; col < W; ++col) {
                     if (S(row, col, 0) > threshold)
-                        importants.emplace_back(std::pair<int, int>(row, col), S(row, col, 0));
+                        attendedAreas.emplace_back(std::pair<int, int>(row, col), S(row, col, 0));
                 }
             }
 
@@ -138,14 +152,14 @@ namespace Image {
             std::vector<std::tuple<int, int, float>> attendedDists;
             float minDist = 2e5;
             float maxDist = 2e-5;
-            if (!importants.empty()) {
+            if (!attendedAreas.empty()) {
                 for (int row = 0; row < H; ++row) {
                     for (int col = 0; col < W; ++col) {
                         float value = S(row, col, 0);
                         if (value > threshold)
                             continue;
                         float dist = 2e5;
-                        for (auto p : importants) {
+                        for (auto p : attendedAreas) {
                             float dRow = (p.first.first - row + 0.0);
                             float dCol = (p.first.second - col + 0.0);
                             float _dist = sqrt(dRow * dRow + dCol * dCol);
@@ -191,7 +205,9 @@ namespace Image {
         {
             nScale = nScale_;
             for (int i = 0; i < nScale; i++)
-                scalePercents.push_back(scaleTable[i]);
+                scalePercents.push_back(Rq[i]);
+            for (int i = 0; i < 4; i++)
+                scaleUSets.push_back(R[i]);
         }
 
         void setScaleU(int scaleU_)
@@ -210,6 +226,7 @@ namespace Image {
             const Eigen::Tensor<T, 3, Eigen::RowMajor>& imgSrc,
             Eigen::Tensor<T, 3, Eigen::RowMajor>& imgSaliency)
         {
+
             imgSaliency.resize(imgSrc.dimension(0), imgSrc.dimension(1), 1);
             imgSaliency.setZero();
 
@@ -217,23 +234,38 @@ namespace Image {
             S.setZero();
 
             Eigen::Tensor<float, 3, Eigen::RowMajor> imgLab;
+
+            // Convert input image to CIE**LAB** color space
             Image::Functor::RGBToCIE<float>()(imgSrc.template cast<float>(), imgLab);
+            std::vector<int> u;
+            for (int i = 0; i < 4; i++) {
+                int scaleU_ = scaleUSets[i] * scaleU;
+                u.clear();
+                // Create image patch of each scale R = {1.0r, 0.8r, 0.5r, 0.3r, ...}
+                Eigen::Tensor<float, 3, Eigen::RowMajor> singleScalePatch = createPatchMap(imgLab, scaleU_);
 
-            Eigen::Tensor<float, 3, Eigen::RowMajor> singleScalePatch = createPatchMap(imgLab, scaleU);
-            for (int r = 0; r < nScale; r++) {
-                int u = std::ceil(scalePercents[r] * scaleU);
-                std::cout << "Generating at scale U = " << u << std::endl;
-                Eigen::Tensor<float, 3, Eigen::RowMajor> scaledMap = createSalienceMap(imgLab, singleScalePatch, u);
-                optimization(scaledMap, float(0.8));
+                for (int r = 0; r < nScale; r++) {
+                    // Calculate scale value for multi-scale saliency enhancement
+                    // The smallest scale allowed in Rq is 20% of the original image scale.
+                    int u_ = std::ceil(scalePercents[r] * scaleU_) > 0.2 * scaleU ? std::ceil(scalePercents[r] * scaleU_) : std::ceil(0.2 * scaleU);
+                    u.push_back(u_);
+                }
+
+                // Create image patch of scale r within multiple scale R = {100%,80%,50%,30%} and calculate their saliance
+                Eigen::Tensor<float, 3, Eigen::RowMajor> S_i = createSalienceMap(imgLab, singleScalePatch, u);
+
+                // Including the immediate context by S_i = \bar{S_i}(1−d_foci(i)).
+                optimization(S_i, float(0.8));
+
                 if (saveScaledResults)
-                    savePNG<uint8_t, 3>("./scale" + std::to_string(u), (scaledMap * 255.0f).cast<uint8_t>());
-                S += (scaledMap / (float)(nScale));
-            }
+                    savePNG<uint8_t, 3>("./scale" + std::to_string(scaleU_) + std::to_string(i), (S_i * 255.0f).cast<uint8_t>());
 
+                // Avaerage final saliance map by total itertions
+                S += (S_i / (float)(4));
+            }
             if (saveScaledResults)
                 savePNG<uint8_t, 3>("./scale", (S * 255.0f).cast<uint8_t>());
 
-            optimization(S, float(0.8));
             imgSaliency = (S * 255.0f).cast<T>();
         }
     };
@@ -243,8 +275,8 @@ namespace Image {
         std::shared_ptr<ContextAwareSaliency> caSaliency = std::make_shared<ContextAwareSaliency>();
         caSaliency->setK(K);
         caSaliency->setC(distC);
-        caSaliency->setNumScale(nScale);
         caSaliency->setScaleU(scaleU);
+        caSaliency->setNumScale(nScale);
         caSaliency->setSaveScaledResults(saveScaledResults);
         return caSaliency;
     }

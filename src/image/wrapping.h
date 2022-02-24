@@ -46,7 +46,7 @@ namespace Image {
     };
 
     class QuadMesh {
-       public:
+    public:
         std::vector<Eigen::Vector2d> vertices;
         std::vector<Eigen::Vector2d> edges;
     };

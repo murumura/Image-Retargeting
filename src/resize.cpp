@@ -9,17 +9,16 @@ int main(int argc, const char* argv[])
     struct myOpts
     {
         std::string InputImage{"./datasets/butterfly.png"};
-        float Sigma{0.3};
-        float SegmentK{1750.0};
-        int MinSize{100};
+        float Sigma{0.5};
+        float SegmentK{500.0};
+        int MinSize{50};
         float MergePercent {0.0001};
         float MergeColorDist {20.0};
         bool SaveSegment{true};
         int DistC{3};
         int SimilarK{64};
-        int NumScale{4};
-        int ScaleU{9};
-        float Overlap{0.5};
+        int NumScale{3};
+        int ScaleU{7};
         bool SaveSaliency{true};
         bool SaveScaledSaliency{true};
         int newH{400};
@@ -38,7 +37,6 @@ int main(int argc, const char* argv[])
         {"--SimilarK", &myOpts::SimilarK, "K most similar patches"},
         {"--NumScale", &myOpts::NumScale, "Number of Patches Scale"},
         {"--ScaleU", &myOpts::ScaleU, "Patches Scale value"},
-        {"--Overlap", &myOpts::Overlap, "Patches Overlap percents"},
         {"--SaveScaledSaliency", &myOpts::SaveScaledSaliency, "Whether to save saliency result of each scale."},
         {"--SaveSaliency", &myOpts::SaveSaliency, "Whether to save saliency result."},
         {"--newH", &myOpts::newH, "Resizing Height."},
@@ -72,8 +70,8 @@ int main(int argc, const char* argv[])
     graphSeg->processImage(input, patches, segMapping, segResult);
 
     if (args.SaveSegment)
-        Image::savePNG("./segmentation"+std::to_string( args.SegmentK)+"-"+std::to_string(args.MinSize), segResult);
-    
+        Image::savePNG("./segmentation"+std::to_string(args.SegmentK)+"-"+std::to_string(args.MinSize), segResult);
+    /*
     auto caSaliency = Image::createContextAwareSaliency(
         args.DistC, 
         args.SimilarK, 
@@ -96,5 +94,5 @@ int main(int argc, const char* argv[])
     
     if (args.SaveSaliency)
         Image::savePNG<uint8_t, 3>("./significance", significanceMap.cast<uint8_t>());
-    
+    */
 }

@@ -172,7 +172,7 @@ namespace Image {
                 for (int c = 0; c < width; c++) {
                     // Take the right, left, top and down pixel
                     for (int delta = -1; delta <= 1; delta += 2) {
-                        for (int delta_c = 0, delta_r = 1; delta_c <= 1; delta_c++ || delta_r--) {
+                        for (int delta_c = 0, delta_r = 1; delta_c <= 1; delta_c++, delta_r--) {
                             int r2 = r + delta * delta_r;
                             int c2 = c + delta * delta_c;
 
@@ -214,7 +214,7 @@ namespace Image {
             es = std::make_shared<PointSet>(height * width);
 
             // Thresholds
-            std::vector<float> thresholds(totalPoints, k);
+            std::vector<float> thresholds(totalPoints, 1 / k);
 
             for (int i = 0; i < edges.size(); i++) {
 
@@ -497,15 +497,12 @@ namespace Image {
     std::shared_ptr<GraphSegmentation> createGraphSegmentation(
         float sigma, float k, int minSize, float pixelInPatch = -1.0f, float adjColorDist = -1.0f)
     {
-
         std::shared_ptr<GraphSegmentation> graphSeg = std::make_shared<GraphSegmentation>();
-
         graphSeg->setSigma(sigma);
         graphSeg->setK(k);
         graphSeg->setMinSize(minSize);
         graphSeg->setPixelInPatch(pixelInPatch);
         graphSeg->setAdjColorDist(adjColorDist);
-
         return graphSeg;
     }
 

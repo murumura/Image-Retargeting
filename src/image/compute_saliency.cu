@@ -119,7 +119,7 @@ namespace Image {
         float minColorDiff = 2e5, maxColorDiff = -2e5;
         // maintain k-smallest elements
         cudaUtils::MinK<float> mink(diffValues, K);
-
+        int calcB = index / (H * W);
         int calcR = index / W;
         int calcC = index % W;
         if (calcR >= H || calcC >= W)
@@ -158,32 +158,34 @@ namespace Image {
 
     void calcSaliencyValueCuda(
         const Eigen::Tensor<float, 3, Eigen::RowMajor>& singleScalePatch,
-        const Eigen::Tensor<float, 3, Eigen::RowMajor>& multiScalePatch,
+        const Eigen::Tensor<float, 4, Eigen::RowMajor>& multiScalePatches,
         Eigen::Tensor<float, 3, Eigen::RowMajor>& salienceMap,
         int distC,
         int K)
     {
-        const int H = multiScalePatch.dimension(0);
-        const int W = multiScalePatch.dimension(1);
-        const int C = multiScalePatch.dimension(2);
+        const int B = multiScalePatches.dimension(0);
+        const int H = multiScalePatches.dimension(1);
+        const int W = multiScalePatches.dimension(2);
+        const int C = multiScalePatches.dimension(3);
 
         const int nThread = W;
         const int nBlock = iDivUp(H * W, nThread);
 
-        std::size_t inTensorBytes = multiScalePatch.size() * sizeof(float);
+        std::size_t multiScaleTensorBytes = multiScalePatch.size() * sizeof(float);
+        std::size_t singleScaleTensorBytes = singleScalePatch.size() * sizeof(float);
         std::size_t outTensorBytes = salienceMap.size() * sizeof(float);
         float* singleScaleDevice;
         float* multiScaleDevice;
         float* imgOutDevice;
 
         // Allocate device memory
-        CUDA_CHECK(cudaMalloc((void**)(&singleScaleDevice), inTensorBytes));
-        CUDA_CHECK(cudaMalloc((void**)(&multiScaleDevice), inTensorBytes));
+        CUDA_CHECK(cudaMalloc((void**)(&singleScaleDevice), singleScaleTensorBytes));
+        CUDA_CHECK(cudaMalloc((void**)(&multiScaleDevice), multiScaleTensorBytes));
         CUDA_CHECK(cudaMalloc((void**)(&imgOutDevice), outTensorBytes));
 
         // Copy data from host to device
-        CUDA_CHECK(cudaMemcpy(singleScaleDevice, singleScalePatch.data(), inTensorBytes, cudaMemcpyHostToDevice));
-        CUDA_CHECK(cudaMemcpy(multiScaleDevice, multiScalePatch.data(), inTensorBytes, cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(singleScaleDevice, singleScalePatch.data(), singleScaleTensorBytes, cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(multiScaleDevice, multiScalePatches.data(), multiScaleTensorBytes, cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemset(imgOutDevice, 0.0, outTensorBytes));
 
         // Launch kernel
