@@ -69,7 +69,7 @@ namespace Image {
             minK.pop();
             // The distance dcolor is the Euclidean distance between
             // vectorized patches in CIE L*a*b color space normalized to the range
-            // [0, 1]. 
+            // [0, 1].
             float dColor = (std::get<1>(tup) - minColorDist) / (maxColorDist - minColorDist);
             sum += dColor / (1 + distC * std::get<2>(tup));
         }

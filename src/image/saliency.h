@@ -136,13 +136,13 @@ namespace Image {
             // (1) normalize accroding to maximum value
             supressBackground(S);
 
-            std::vector<std::pair<std::pair<int, int>, float>> attendedAreas;
+            std::vector<std::pair<int, int>> attendedAreas;
 
             // (2) record important part information
             for (int row = 0; row < H; ++row) {
                 for (int col = 0; col < W; ++col) {
                     if (S(row, col, 0) > threshold)
-                        attendedAreas.emplace_back(std::pair<int, int>(row, col), S(row, col, 0));
+                        attendedAreas.emplace_back(std::make_pair(row, col));
                 }
             }
 
@@ -160,8 +160,8 @@ namespace Image {
                             continue;
                         float dist = 2e5;
                         for (auto p : attendedAreas) {
-                            float dRow = (p.first.first - row + 0.0);
-                            float dCol = (p.first.second - col + 0.0);
+                            float dRow = (p.first - row + 0.0);
+                            float dCol = (p.second - col + 0.0);
                             float _dist = sqrt(dRow * dRow + dCol * dCol);
                             //minimum distance to attended area
                             if (dist > _dist)
@@ -247,10 +247,11 @@ namespace Image {
                 for (int r = 0; r < nScale; r++) {
                     // Calculate scale value for multi-scale saliency enhancement
                     // The smallest scale allowed in Rq is 20% of the original image scale.
-                    int u_ = std::ceil(scalePercents[r] * scaleU_) > 0.2 * scaleU ? std::ceil(scalePercents[r] * scaleU_) : std::ceil(0.2 * scaleU);
+                    int u_ = std::ceil(scalePercents[r] * scaleU_) > std::ceil(0.2 * scaleU) ? std::ceil(scalePercents[r] * scaleU_) : std::ceil(0.2 * scaleU);
                     u.push_back(u_);
                 }
 
+                std::cout << "Generating Saliance map at Scale=" << scaleU_ << std::endl;
                 // Create image patch of scale r within multiple scale R = {100%,80%,50%,30%} and calculate their saliance
                 Eigen::Tensor<float, 3, Eigen::RowMajor> S_i = createSalienceMap(imgLab, singleScalePatch, u);
 
@@ -258,14 +259,15 @@ namespace Image {
                 optimization(S_i, float(0.8));
 
                 if (saveScaledResults)
-                    savePNG<uint8_t, 3>("./scale" + std::to_string(scaleU_) + std::to_string(i), (S_i * 255.0f).cast<uint8_t>());
+                    savePNG<uint8_t, 3>("./scale-saliency" + std::to_string(scaleU_), (S_i * 255.0f).cast<uint8_t>());
 
                 // Avaerage final saliance map by total itertions
                 S += (S_i / (float)(4));
             }
+           
             if (saveScaledResults)
                 savePNG<uint8_t, 3>("./scale", (S * 255.0f).cast<uint8_t>());
-
+           
             imgSaliency = (S * 255.0f).cast<T>();
         }
     };
