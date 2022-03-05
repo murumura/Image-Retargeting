@@ -69,7 +69,7 @@ list(APPEND RESIZING_CXX_FLAGS "-w")
 # Sources/Headers
 ###########################################################################
 set (RESIZING_HEADER
-    # image headers
+    # image headers/sources
     ${CMAKE_SOURCE_DIR}/src/image/image.h
     ${CMAKE_SOURCE_DIR}/src/image/imageIO.h
     ${CMAKE_SOURCE_DIR}/src/image/padding_op.h
@@ -82,9 +82,17 @@ set (RESIZING_HEADER
     ${CMAKE_SOURCE_DIR}/src/image/pool.h
     ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.h
     ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.cpp
+    ${CMAKE_SOURCE_DIR}/src/image/resizing_op.h
+    # geometry header/sources
+    ${CMAKE_SOURCE_DIR}/src/geometry/common.h
+    ${CMAKE_SOURCE_DIR}/src/geometry/quad_vertex.h
+    ${CMAKE_SOURCE_DIR}/src/geometry/quad_mesh.h
+    ${CMAKE_SOURCE_DIR}/src/geometry/quad_edge.h
+    ${CMAKE_SOURCE_DIR}/src/geometry/quad_facet.h
     # numerical headers
     ${CMAKE_SOURCE_DIR}/src/numerical/types.h
 )
+
 if(CUDA_FOUND)
     list(APPEND RESIZING_HEADER  ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.cu)
 endif()

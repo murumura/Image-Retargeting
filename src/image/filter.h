@@ -99,7 +99,7 @@ namespace Image {
     // Invoke invalid argument exception if the string couldn't be converted.
     inline KernelType stringToKernelType(const std::string& kernelType)
     {
-        const std::string lower_case = stringToLower(kernelType);
+        const std::string lower_case = Utils::stringToLower(kernelType);
         if (lower_case == "lanczos")
             return KernelType::LanczosKernel;
         else if (lower_case == "gaussian")

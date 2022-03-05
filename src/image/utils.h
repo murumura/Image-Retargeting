@@ -2,10 +2,10 @@
 #define UTILS_H
 #include <stddef.h>
 
+#include <cassert>
 #include <memory>
 #include <type_traits>
 #include <utility>
-
 namespace Utils {
     namespace detail {
         // Trait to select overloads and return types for MakeUnique.
@@ -23,6 +23,15 @@ namespace Utils {
         };
 
     } // namespace detail
+
+    // Return lower-cased version of str.
+    inline std::string stringToLower(const std::string& str)
+    {
+        std::string lowerStr = str;
+        std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(),
+            [](unsigned char c) { return std::tolower(c); });
+        return lowerStr;
+    }
 
     // Transfers ownership of a raw pointer to a std::unique_ptr of deduced type.
     // Note: Cannot wrap pointers to array of unknown bound (i.e. U(*)[]).

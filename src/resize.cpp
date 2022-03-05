@@ -8,17 +8,17 @@ int main(int argc, const char* argv[])
 {
     struct myOpts
     {
-        std::string InputImage{"./datasets/butterflyresize.png"};
+        std::string InputImage{"./datasets/butterfly.png"};
         float Sigma{0.5};
         float SegmentK{500.0};
-        int MinSize{20};
+        int MinSize{100};
         float MergePercent {0.0001};
         float MergeColorDist {20.0};
         bool SaveSegment{true};
         int DistC{3};
         int SimilarK{64};
         int NumScale{3};
-        int ScaleU{7};
+        int ScaleU{6};
         bool SaveSaliency{true};
         bool SaveScaledSaliency{true};
         int newH{400};

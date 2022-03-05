@@ -1,7 +1,9 @@
 #ifndef WRAPPING_H
 #define WRAPPING_H
 #include <image/image.h>
+#include <image/utils.h>
 #include <iostream>
+#include <list>
 #include <vector>
 namespace Image {
     const int r = 0;
@@ -43,12 +45,6 @@ namespace Image {
         {
             return segmentId < p.segmentId;
         }
-    };
-
-    class QuadMesh {
-    public:
-        std::vector<Eigen::Vector2d> vertices;
-        std::vector<Eigen::Vector2d> edges;
     };
 
     class Wrapping {

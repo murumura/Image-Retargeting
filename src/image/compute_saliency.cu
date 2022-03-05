@@ -13,20 +13,18 @@ namespace Image {
             // Arguments:
             //   vals: Color distance to key track of
             //   K: How many values to keep track of
-            __device__ MinK(val_t* vals, val_t* color_dists, val_t* pos_dists, int K)
-                : vals(vals), color_dists(color_dists), pos_dists(pos_dists), K(K), _size(0) {}
+            __device__ MinK(val_t* vals, int K)
+                : vals(vals), K(K), _size(0) {}
 
             // Try to add a new key and associated value to the data structure. If the key
             // is one of the smallest K seen so far then it will be kept; otherwise it
             // it will not be kept.
             // Arguments:
             //   val: The value associated to the key
-            __device__ __forceinline__ void add(const val_t& val, const val_t& dcolor, const val_t& dpos)
+            __device__ __forceinline__ void add(const val_t& val)
             {
                 if (_size < K) {
                     vals[_size] = val;
-                    color_dists[_size] = dcolor;
-                    pos_dists[_size] = dpos;
                     if (_size == 0 || val > max_val) {
                         max_val = val;
                         max_idx = _size;
@@ -35,8 +33,6 @@ namespace Image {
                 }
                 else if (val < max_val) {
                     vals[max_idx] = val;
-                    color_dists[max_idx] = dcolor;
-                    pos_dists[max_idx] = dpos;
                     max_val = val;
                     for (int k = 0; k < K; ++k) {
                         val_t cur_val = vals[k];
@@ -61,34 +57,15 @@ namespace Image {
                     for (int j = 0; j < _size - i - 1; ++j) {
                         if (vals[j + 1] < vals[j]) {
                             val_t val = vals[j];
-                            val_t dcolor = color_dists[j];
-                            val_t dpos = pos_dists[j];
-
                             vals[j] = vals[j + 1];
-                            color_dists[j] = color_dists[j + 1];
-                            pos_dists[j] = pos_dists[j + 1];
-
                             vals[j + 1] = val;
-                            color_dists[j + 1] = dcolor;
-                            pos_dists[j + 1] = dpos;
                         }
                     }
                 }
             }
 
-            __device__ __forceinline__ void normalize(val_t min_dcolor, val_t max_dcolor, val_t distC)
-            {
-                sort();
-                for (int i = 0; i < _size; ++i) {
-                    float dColor = (color_dists[i] - min_dcolor) / (max_dcolor - min_dcolor);
-                    vals[i] = dColor / (1.0 + distC * pos_dists[i]);
-                }
-            }
-
         private:
             val_t* vals;
-            val_t* color_dists;
-            val_t* pos_dists;
             int K;
             int _size;
             val_t max_val;
@@ -130,12 +107,10 @@ namespace Image {
         int index = threadIdx.x + (blockDim.x * blockIdx.x);
 
         float diffValues[MAXK];
-        float diffColors[MAXK];
-        float diffPositions[MAXK];
 
         float minColorDist = 2e5, maxColorDist = 2e-5;
         // maintain k-smallest elements
-        cudaUtils::MinK<float> mink(diffValues, diffColors, diffPositions, K);
+        cudaUtils::MinK<float> mink(diffValues, K);
         int calcR = index / W;
         int calcC = index % W;
         if (calcR >= H || calcC >= W)
@@ -146,29 +121,29 @@ namespace Image {
         const int L = max(H, W);
         for (int batch = 0; batch < B; batch++)
             for (int row = 0; row < H; row++)
-                for (int col = 0; col < W; col++) 
-                {
+                for (int col = 0; col < W; col++) {
                     colorDist = 0;
                     for (int ch = 0; ch < C; ch++) {
                         Index i1 = calcR * W * C + calcC * C + ch;
                         Index i2 = batch * H * W * C + row * W * C + col * C + ch;
-                        colorDist += powf((singleScalePatch[i1] - multiScalePatch[i2] + 0.0) / float(1.0), 2);
+                        colorDist += powf((singleScalePatch[i1] - multiScalePatch[i2] + 0.0), 2);
                     }
                     colorDist = sqrt(colorDist);
                     float dRow = (calcR - row + 0.0);
                     float dCol = (calcC - col + 0.0);
                     posDist = sqrt(dRow * dRow + dCol * dCol) / L;
                     float dist = colorDist / (1.0 + distC * posDist);
-                    mink.add(dist, colorDist, posDist);
+                    mink.add(dist);
                     if (colorDist > maxColorDist)
                         maxColorDist = colorDist;
                     if (colorDist < minColorDist)
                         minColorDist = colorDist;
                 }
-        mink.normalize(minColorDist, maxColorDist, distC);
+        mink.sort();
+
         float sum = 0;
         int n = 0;
-        for (n = 0; n <= K && n < mink.size(); n++)
+        for (n = 0; n < K && n < mink.size(); n++)
             sum += diffValues[n];
 
         output[index] = 1 - expf(-sum / n + 0.0);

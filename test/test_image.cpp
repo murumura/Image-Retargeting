@@ -4,8 +4,8 @@
 #include <image/filter.h>
 #include <image/image.h>
 #include <image/imageIO.h>
+#include <image/resizing_op.h>
 #include <iostream>
-
 using namespace Image;
 using testing::Eq;
 
@@ -29,6 +29,16 @@ data randomValue(data minimum, int maximum)
             value = minimum;
         return value;
     }
+}
+TEST(Image, interpolationNN)
+{
+    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> RGB = loadPNG<uint8_t>("./test/test_image/blur.png", 3);
+    Eigen::Tensor<float, 3, Eigen::RowMajor> interpolatedRGB(RGB.dimension(0) * 1.5, RGB.dimension(1) * 0.75, RGB.dimension(2));
+    const float height_scale = 1 / 1.5;
+    const float width_scale = 1 / 0.75;
+    Image::Functor::ResizeNearestNeighbor<float>()(RGB.cast<float>(), height_scale, width_scale, true, true, interpolatedRGB);
+    savePNG<uint8_t, 3>("./interpolatedRGB", interpolatedRGB.cast<uint8_t>());
+    EXPECT_EQ(0, remove("./interpolatedRGB.png"));
 }
 
 TEST(Image, Shape)

@@ -5,6 +5,7 @@
 #include <image/compute_saliency.h>
 #include <image/imageIO.h>
 #include <image/pool.h>
+#include <image/resizing_op.h>
 #include <image/wrapping.h>
 #include <iostream>
 #include <memory>
@@ -24,6 +25,7 @@ namespace Image {
         std::vector<float> scalePercents;
         std::vector<float> scaleUSets;
 
+        ResizingImageOp<float> resizingOp;
         void computeSalienceValueParallel(
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& singleScalePatch,
             const Eigen::Tensor<float, 4, Eigen::RowMajor>& multiScalePatch,
@@ -89,7 +91,7 @@ namespace Image {
         createSalienceMap(
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& singleScalePatch,
-            const std::vector<int>& multiScales)
+            const std::vector<int>& multiScales, const int origH, const int origW)
         {
             const int B = multiScales.size();
             const int H = imgSrcLAB.dimension(0);
@@ -110,7 +112,15 @@ namespace Image {
 
             // The saliency map S_i^r at each scale is normalized to the range [0,1]
             normalizeSaliency(salienceMap);
-            return salienceMap;
+
+            // Including the immediate context by S_i = \bar{S_i}(1−d_foci(i)).
+            optimization(salienceMap, float(0.8));
+
+            // interpolated back to original image size.
+            Eigen::Tensor<float, 3, Eigen::RowMajor> salienceMapOrigSize(origH, origW, 1);
+            resizingOp(salienceMap, salienceMapOrigSize);
+
+            return salienceMapOrigSize;
         }
 
         void supressBackground(Eigen::Tensor<float, 3, Eigen::RowMajor>& S)
@@ -152,6 +162,7 @@ namespace Image {
             std::vector<std::tuple<int, int, float>> attendedDists;
             float minDist = 2e5;
             float maxDist = 2e-5;
+
             if (!attendedAreas.empty()) {
                 for (int row = 0; row < H; ++row) {
                     for (int col = 0; col < W; ++col) {
@@ -189,6 +200,7 @@ namespace Image {
     public:
         explicit ContextAwareSaliency() : K{64}, distC{3}, nScale{3}
         {
+            resizingOp = ResizingImageOp<float>("nearest_neighbor", true, false);
         }
 
         void setK(int K_)
@@ -226,8 +238,9 @@ namespace Image {
             const Eigen::Tensor<T, 3, Eigen::RowMajor>& imgSrc,
             Eigen::Tensor<T, 3, Eigen::RowMajor>& imgSaliency)
         {
-
-            imgSaliency.resize(imgSrc.dimension(0), imgSrc.dimension(1), 1);
+            const int origH = imgSrc.dimension(0);
+            const int origW = imgSrc.dimension(1);
+            imgSaliency.resize(origH, origW, 1);
             imgSaliency.setZero();
 
             Eigen::Tensor<float, 3, Eigen::RowMajor> S(imgSrc.dimension(0), imgSrc.dimension(1), 1);
@@ -237,37 +250,46 @@ namespace Image {
 
             // Convert input image to CIE**LAB** color space
             Image::Functor::RGBToCIE<float>()(imgSrc.template cast<float>(), imgLab);
+
+            // Scale all the images to the same size of 250 pixels (largest dimension).
+            float scaleRatio = 250.0 / float(std::max(imgSrc.dimension(0), imgSrc.dimension(1)));
+
+            Eigen::Tensor<float, 3, Eigen::RowMajor> imgLab250(imgLab.dimension(0) * scaleRatio, imgLab.dimension(1) * scaleRatio, imgLab.dimension(2));
+
+            resizingOp(imgLab, imgLab250);
+            const int M = 5;
             std::vector<int> u;
-            for (int i = 0; i < 4; i++) {
-                int scaleU_ = scaleUSets[i] * scaleU;
+            for (int i = 0; i < M; i++) {
+                // Calculate scale value for multi-scale saliency enhancement
+                // The smallest scale allowed in Rq is 20% of the original image scale.
+                int scaleU_ = std::ceil(scaleUSets[i] * scaleU) >= std::ceil(0.2 * scaleU) ? std::ceil(scaleUSets[i] * scaleU) : std::ceil(0.2 * scaleU);
+
+                std::cout << "Generating Saliance map at Scale=" << scaleU_ << " ....";
                 u.clear();
-                // Create image patch of each scale R = {1.0r, 0.8r, 0.5r, 0.3r, ...}
-                Eigen::Tensor<float, 3, Eigen::RowMajor> singleScalePatch = createPatchMap(imgLab, scaleU_);
+
+                // Create image patch of each scale R = {1.0r, 5r, 0.25r}
+                Eigen::Tensor<float, 3, Eigen::RowMajor> singleScalePatch = createPatchMap(imgLab250, scaleU_);
 
                 for (int r = 0; r < nScale; r++) {
-                    // Calculate scale value for multi-scale saliency enhancement
-                    // The smallest scale allowed in Rq is 20% of the original image scale.
-                    int u_ = std::ceil(scalePercents[r] * scaleU_) > std::ceil(0.2 * scaleU) ? std::ceil(scalePercents[r] * scaleU_) : std::ceil(0.2 * scaleU);
+                    int u_ = std::ceil(scalePercents[r] * scaleU_);
                     u.push_back(u_);
                 }
 
-                std::cout << "Generating Saliance map at Scale=" << scaleU_ << std::endl;
-                // Create image patch of scale r within multiple scale R = {100%,80%,50%,30%} and calculate their saliance
-                Eigen::Tensor<float, 3, Eigen::RowMajor> S_i = createSalienceMap(imgLab, singleScalePatch, u);
+                // Create image patch of scale r within multiple scale R = {100%, 80%, 50%, 30%} and calculate their saliance
+                Eigen::Tensor<float, 3, Eigen::RowMajor> S_i = createSalienceMap(imgLab250, singleScalePatch, u, origH, origW);
 
-                // Including the immediate context by S_i = \bar{S_i}(1−d_foci(i)).
-                optimization(S_i, float(0.8));
+                std::cout << "  Done" << std::endl;
 
                 if (saveScaledResults)
                     savePNG<uint8_t, 3>("./scale-saliency" + std::to_string(scaleU_), (S_i * 255.0f).cast<uint8_t>());
 
                 // Avaerage final saliance map by total itertions
-                S += (S_i / (float)(4));
+                S += (S_i / (float)(M));
             }
-           
+
             if (saveScaledResults)
                 savePNG<uint8_t, 3>("./scale", (S * 255.0f).cast<uint8_t>());
-           
+
             imgSaliency = (S * 255.0f).cast<T>();
         }
     };

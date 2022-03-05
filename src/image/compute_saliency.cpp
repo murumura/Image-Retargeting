@@ -33,13 +33,13 @@ namespace Image {
         float minColorDist = 2e5;
         float maxColorDist = -2e5;
 
-        auto cmp = [](std::tuple<float, float, float> left, std::tuple<float, float, float> right) {
-            return std::get<0>(left) < std::get<0>(right);
+        auto cmp = [](float left, float right) {
+            return left < right;
         };
 
         std::priority_queue<
-            std::tuple<float, float, float>,
-            std::vector<std::tuple<float, float, float>>,
+            float,
+            std::vector<float>,
             decltype(cmp)>
             minK(cmp);
 
@@ -50,10 +50,10 @@ namespace Image {
                     float posDist = calcPosDist(calcR, calcC, r, c);
                     float dist = colorDist / (1 + distC * posDist);
                     if (minK.size() < K)
-                        minK.push(std::make_tuple(dist, colorDist, posDist));
-                    else if (dist < std::get<0>(minK.top())) {
+                        minK.push(dist);
+                    else if (dist < minK.top()) {
                         minK.pop();
-                        minK.push(std::make_tuple(dist, colorDist, posDist));
+                        minK.push(dist);
                     }
                     if (colorDist > maxColorDist)
                         maxColorDist = colorDist;
@@ -65,13 +65,8 @@ namespace Image {
         float sum = 0;
         int n = 0;
         for (n = 0; n < K && n < minK.size(); ++n) {
-            auto tup = minK.top();
+            sum += minK.top();
             minK.pop();
-            // The distance dcolor is the Euclidean distance between
-            // vectorized patches in CIE L*a*b color space normalized to the range
-            // [0, 1].
-            float dColor = (std::get<1>(tup) - minColorDist) / (maxColorDist - minColorDist);
-            sum += dColor / (1 + distC * std::get<2>(tup));
         }
         return 1 - std::exp(-sum / n);
     }

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <image/image.h>
+#include <image/utils.h>
 #include <istream>
 #include <stdexcept>
 #include <string>
@@ -17,20 +18,11 @@ namespace Image {
         EDGE = 3, ///<pads with the edge values, with string "edge"
     };
 
-    // Return lower-cased version of str.
-    inline std::string stringToLower(const std::string& str)
-    {
-        std::string lowerStr = str;
-        std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(),
-            [](unsigned char c) { return std::tolower(c); });
-        return lowerStr;
-    }
-
     // Converts a string into the corresponding padding mode.
     // Invoke invalid argument exception if the string couldn't be converted.
     inline PadMode stringToPadMode(const std::string& mode)
     {
-        const std::string lower_case = stringToLower(mode);
+        const std::string lower_case = Utils::stringToLower(mode);
         if (lower_case == "constant") {
             return PadMode::CONSTANT;
         }
