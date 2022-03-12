@@ -470,7 +470,7 @@ namespace Image {
             // Convert image to float type
             Eigen::Tensor<float, 3, Eigen::RowMajor> imgSrcFloat = imgSrc.template cast<float>();
 
-            // sommthing image
+            // smoothing image
             Eigen::Tensor<float, 3, Eigen::RowMajor> imgFiltered;
             smooth(imgSrcFloat, imgFiltered);
 

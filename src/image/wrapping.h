@@ -1,5 +1,6 @@
 #ifndef WRAPPING_H
 #define WRAPPING_H
+#include <geometry/quad_mesh.h>
 #include <image/image.h>
 #include <image/utils.h>
 #include <iostream>
@@ -17,6 +18,9 @@ namespace Image {
         int segmentId;
         unsigned int size;
         float saliencyValue;
+        std::shared_ptr<Geometry::MeshEdge> reprEdge{nullptr};
+        std::shared_ptr<Geometry::PatchMesh> patchMesh{nullptr};
+        Eigen::Vector2f centroid{-1, -1};
 
         Patch()
             : saliencyValue{-1.0}, size{0.0}, segmentId{-1}
@@ -41,6 +45,22 @@ namespace Image {
             patchColor = patchColor_;
         }
 
+        void setPatchMesh()
+        {
+        }
+
+        void computeCentroid()
+        {
+            if (patchMesh)
+                centroid = patchMesh->centroid;
+        }
+
+        void computeReprEdge()
+        {
+            if (patchMesh)
+                reprEdge = patchMesh->getCentralEdge();
+        }
+
         bool operator<(const Patch& p) const
         {
             return segmentId < p.segmentId;
@@ -49,8 +69,53 @@ namespace Image {
 
     class Wrapping {
     public:
-        void reconstructImage()
+        explicit Wrapping(std::size_t targetHeight_, std::size_t targetWidth_, float alpha_, float quadSize_)
+            : alpha{alpha_}, targetHeight{targetHeight_}, targetWidth{targetWidth_}, quadSize{quadSize_}
         {
+        }
+
+        void buildMeshGrid(
+            const Eigen::Tensor<uint8_t, 3, Eigen::RowMajor>& saliencyMap,
+            std::vector<Image::Patch>& patches)
+        {
+            const int origH = saliencyMap.dimension(0);
+            const int origW = saliencyMap.dimension(1);
+            meshCols = origH / quadSize;
+            meshRows = origW / quadSize;
+
+            // Each grid store corresponding segmentation ID
+            Eigen::Tensor<int, 2, Eigen::RowMajor> meshGrid(meshRows, meshCols);
+
+            for (int row = 0; row < meshRows; row++)
+                for (int col = 0; col < meshCols; col++) {
+                }
+
+            for (int i = 0; i < patches.size(); i++)
+                patches[i].setPatchMesh();
+        }
+
+        void patchTransformConstraint()
+        {
+        }
+
+        void gridOrientationConstraint()
+        {
+        }
+
+        template <typename T>
+        void reconstructImage(
+            const Eigen::Tensor<uint8_t, 3, Eigen::RowMajor>& saliencyMap,
+            std::vector<Image::Patch>& patches,
+            Eigen::Tensor<T, 3, Eigen::RowMajor>& resizedImage)
+        {
+            const int origH = saliencyMap.dimension(0);
+            const int origW = saliencyMap.dimension(1);
+            resizedImage.resize(targetHeight, targetWidth, 3);
+
+            // Convert image to float type
+            Eigen::Tensor<float, 3, Eigen::RowMajor> retargetImgFloat = resizedImage.template cast<float>();
+
+            // Build mesh grid & setup patch mesh
         }
 
         static Eigen::Tensor<float, 3, Eigen::RowMajor> applyColorMap(
@@ -137,7 +202,19 @@ namespace Image {
         }
 
     private:
+        float alpha;
+        std::size_t targetHeight, targetWidth;
+        float weightDST;
+        float weightDLT;
+        float quadSize; ///< grid size in pixels
+        float meshRows, meshCols;
     };
+
+    std::shared_ptr<Wrapping> createWrapping(std::size_t targetH, std::size_t targetW, float alpha, float quadSize)
+    {
+        std::shared_ptr<Wrapping> imageWarp = std::make_shared<Wrapping>(targetH, targetW, alpha, quadSize);
+        return imageWarp;
+    }
 
 } // namespace Image
 

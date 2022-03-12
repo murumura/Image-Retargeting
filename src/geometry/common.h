@@ -1,12 +1,8 @@
 #ifndef COMMON_H
 #define COMMON_H
+#include <eigen3/Eigen/Dense>
+#include <list>
 #include <memory>
 #include <vector>
-#include <list>
-#include <eigen3/Eigen/Dense>
-namespace Geomertry
-{
-    
-} // namespace Geomertry
 
 #endif

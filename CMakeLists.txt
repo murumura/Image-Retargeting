@@ -85,10 +85,7 @@ set (RESIZING_HEADER
     ${CMAKE_SOURCE_DIR}/src/image/resizing_op.h
     # geometry header/sources
     ${CMAKE_SOURCE_DIR}/src/geometry/common.h
-    ${CMAKE_SOURCE_DIR}/src/geometry/quad_vertex.h
     ${CMAKE_SOURCE_DIR}/src/geometry/quad_mesh.h
-    ${CMAKE_SOURCE_DIR}/src/geometry/quad_edge.h
-    ${CMAKE_SOURCE_DIR}/src/geometry/quad_facet.h
     # numerical headers
     ${CMAKE_SOURCE_DIR}/src/numerical/types.h
 )
