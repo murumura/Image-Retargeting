@@ -67,6 +67,11 @@ namespace Image {
         }
     };
 
+    struct CachedCoordMapping {
+        Eigen::Vector2i pixel_coord;
+        int patch_index; // corresponding patch index of stored segmentId
+    };
+
     class Wrapping {
     public:
         explicit Wrapping(std::size_t targetHeight_, std::size_t targetWidth_, float alpha_, float quadSize_)
@@ -75,19 +80,48 @@ namespace Image {
         }
 
         void buildMeshGrid(
-            const Eigen::Tensor<uint8_t, 3, Eigen::RowMajor>& saliencyMap,
+            const Eigen::Tensor<int, 3, Eigen::RowMajor>& segMapping,
             std::vector<Image::Patch>& patches)
         {
-            const int origH = saliencyMap.dimension(0);
-            const int origW = saliencyMap.dimension(1);
-            meshCols = origH / quadSize;
-            meshRows = origW / quadSize;
+            const int origH = segMapping.dimension(0);
+            const int origW = segMapping.dimension(1);
+            const int meshCols = origH / quadSize + 1;
+            const int meshRows = origW / quadSize + 1;
+            const float quad_width = (float)(origH) / (meshCols - 1);
+            const float quad_height = (float)(origW) / (meshRows - 1);
 
-            // Each grid store corresponding segmentation ID
-            Eigen::Tensor<int, 2, Eigen::RowMajor> meshGrid(meshRows, meshCols);
+            std::function<Eigen::Vector2i(int, int)> coordTransform = [&](int mesh_row, int mesh_col) {
+                int pixel_row = mesh_row * quad_height;
+                int pixel_col = mesh_col * quad_width;
+                // boundary case
+                if (mesh_col == meshCols - 1)
+                    pixel_col--;
+                if (mesh_row == meshRows - 1)
+                    pixel_row--;
+                return Eigen::Vector2i{pixel_row, pixel_col};
+            };
+
+            std::function<int(int)> findPatchIndex = [&](int segId) {
+                for (int i = 0; i < patches.size(); i++)
+                    if (patches[i].segmentId == segId)
+                        return i;
+                return -1;
+            };
+
+            // Each entry store an transformed coordinates
+            std::vector<CachedCoordMapping> cache_mappings;
+            cache_mappings.reserve(meshRows * meshCols);
 
             for (int row = 0; row < meshRows; row++)
                 for (int col = 0; col < meshCols; col++) {
+                    int index = row * meshCols + col;
+                    cache_mappings[index].pixel_coord = coordTransform(row, col);
+                    int segId = segMapping(cache_mappings[index].pixel_coord(0), cache_mappings[index].pixel_coord(1), 0);
+                    assert(cache_mappings[index].pixel_coord(0) >=0 && cache_mappings[index].pixel_coord(0) < origH);
+                    assert(cache_mappings[index].pixel_coord(1) >=0 && cache_mappings[index].pixel_coord(1) < origW);
+                    cache_mappings[index].patch_index = findPatchIndex(segId);
+                    if (cache_mappings[index].patch_index == -1)
+                        std::cout << segId << std::endl;
                 }
 
             for (int i = 0; i < patches.size(); i++)
@@ -104,18 +138,19 @@ namespace Image {
 
         template <typename T>
         void reconstructImage(
-            const Eigen::Tensor<uint8_t, 3, Eigen::RowMajor>& saliencyMap,
+            const Eigen::Tensor<int, 3, Eigen::RowMajor>& segMapping,
             std::vector<Image::Patch>& patches,
             Eigen::Tensor<T, 3, Eigen::RowMajor>& resizedImage)
         {
-            const int origH = saliencyMap.dimension(0);
-            const int origW = saliencyMap.dimension(1);
+            const int origH = segMapping.dimension(0);
+            const int origW = segMapping.dimension(1);
             resizedImage.resize(targetHeight, targetWidth, 3);
 
             // Convert image to float type
             Eigen::Tensor<float, 3, Eigen::RowMajor> retargetImgFloat = resizedImage.template cast<float>();
 
             // Build mesh grid & setup patch mesh
+            buildMeshGrid(segMapping, patches);
         }
 
         static Eigen::Tensor<float, 3, Eigen::RowMajor> applyColorMap(
@@ -207,7 +242,6 @@ namespace Image {
         float weightDST;
         float weightDLT;
         float quadSize; ///< grid size in pixels
-        float meshRows, meshCols;
     };
 
     std::shared_ptr<Wrapping> createWrapping(std::size_t targetH, std::size_t targetW, float alpha, float quadSize)

@@ -8,7 +8,7 @@ int main(int argc, const char* argv[])
 {
     struct myOpts
     {
-        std::string InputImage{"./datasets/butterfly.png"};
+        std::string InputImage{"./datasets/maple.png"};
         float Sigma{0.5};
         float SegmentK{500.0};
         int MinSize{100};
@@ -23,6 +23,8 @@ int main(int argc, const char* argv[])
         bool SaveScaledSaliency{true};
         int newH{400};
         int newW{400};
+        float Alpha{0.8f};
+        int QuadSize{10};
     };
 
     auto parser = CommndLineParser<myOpts>::create({
@@ -95,4 +97,15 @@ int main(int argc, const char* argv[])
     if (args.SaveSaliency)
         Image::savePNG<uint8_t, 3>("./significance", significanceMap.cast<uint8_t>());
     
+    // Retargeting results
+    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> resizedImage;
+
+    auto wrapping = Image::createWrapping(
+        args.newH, 
+        args.newW, 
+        args.Alpha, 
+        args.QuadSize
+    );
+
+    wrapping->reconstructImage<uint8_t>(segMapping, patches, resizedImage);
 }

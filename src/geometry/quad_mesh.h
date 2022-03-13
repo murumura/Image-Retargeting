@@ -116,7 +116,7 @@ namespace Geometry {
 
         PatchMesh(
             const std::vector<Eigen::Vector2f>& vertices_uv,
-            const std::vector<std::pair<LocationType, LocationType>>& vertices_loc)
+            const std::vector<std::pair<LocationType, LocationType>>& loc_types)
         {
             nEdges = vertices_uv.size() / 2;
             constexpr int offset = 2;
@@ -124,8 +124,8 @@ namespace Geometry {
             for (int i = 0; i < vertices_uv.size(); i += offset) {
                 edges.emplace_back(
                     std::make_shared<MeshEdge>(
-                        std::make_shared<MeshVert>(vertices_uv[i], vertices_loc[i].first, vertices_loc[i].second), ///< v0
-                        std::make_shared<MeshVert>(vertices_uv[i + 1], vertices_loc[i + 1].first, vertices_loc[i + 1].second) ///< v1
+                        std::make_shared<MeshVert>(vertices_uv[i], loc_types[i].first, loc_types[i].second), ///< v0
+                        std::make_shared<MeshVert>(vertices_uv[i + 1], loc_types[i + 1].first, loc_types[i + 1].second) ///< v1
                         ));
             }
             computeCentroid();
