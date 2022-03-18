@@ -8,7 +8,7 @@ int main(int argc, const char* argv[])
 {
     struct myOpts
     {
-        std::string InputImage{"./datasets/butterfly.png"};
+        std::string InputImage{"./datasets/heartsmall.png"};
         float Sigma{0.5};
         float SegmentK{500.0};
         int MinSize{100};

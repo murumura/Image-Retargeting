@@ -122,10 +122,15 @@ namespace Image {
             const Eigen::Matrix2f L{
                 {newH / origH, 0},
                 {0, newW / origW}};
+
             const float high_ratio = L(0, 0);
             const float width_ratio = L(1, 1);
 
             Scalar D = 0;
+            Scalar Dtop = 0;
+            Scalar Dbottom = 0;
+            Scalar Dleft = 0;
+            Scalar Dright = 0;
             for (int i = 0; i < patches.size(); i++) {
                 float s_i = patches[i].saliencyValue;
                 const std::vector<std::shared_ptr<Geometry::MeshEdge>> edgesList = patches[i].patchMesh->edges;
@@ -135,9 +140,10 @@ namespace Image {
                 Eigen::Vector2f c = repr_edge->v[0]->uv - repr_edge->v[1]->uv;
 
                 Eigen::Matrix2f M{
-                    {c(0), c(1)},
-                    {-c(1), c(0)},
+                    {c(1), c(0)},
+                    {-c(0), c(1)},
                 };
+
                 Eigen::Matrix2f M_inv = M.inverse();
 
                 const Eigen::Vector2i repr_vertices = repr_edge->deserialize(meshCols);
@@ -160,26 +166,55 @@ namespace Image {
 
                     // clang-format off
                     // Set up patch transformation constraint
-                    const Scalar Dst =  \
-                        (   
+                    const Scalar DST =  \
                             alpha * s_i * 
                             (
-                                ( (Vp[v1x] - Vp[v2x]) -  s * (Vp[C1x] - Vp[C2x]) ) * ( (Vp[v1x] - Vp[v2x]) -  s * (Vp[C1x] - Vp[C2x]) )  +
-                                ( (Vp[v1y] - Vp[v2y]) +  r * (Vp[C1y] - Vp[C2y]) ) * ( (Vp[v1y] - Vp[v2y]) +  r * (Vp[C1y] - Vp[C2y]) )
-                            )
-                        );
+                                ( (Vp[v1x] - Vp[v2x]) -  (s * (Vp[C1x] - Vp[C2x]) + r * (Vp[C1y] - Vp[C2y]) ) ) * 
+                                ( (Vp[v1x] - Vp[v2x]) -  (s * (Vp[C1x] - Vp[C2x]) + r * (Vp[C1y] - Vp[C2y]) ) )
+                                                                                     + 
+                                ( (Vp[v1y] - Vp[v2y]) -  (-r * (Vp[C1x] - Vp[C2x]) + s * (Vp[C1y] - Vp[C2y]) ) ) * 
+                                ( (Vp[v1y] - Vp[v2y]) -  (-r * (Vp[C1x] - Vp[C2x]) + s * (Vp[C1y] - Vp[C2y]) ) )
+                            );
 
-                    // Set up grid orientation constraint
+                    const Scalar DLT = \    
+                            (1 - alpha) * (1 - s_i) *
+                            (
+                                ( (Vp[v1x] - Vp[v2x]) -  (high_ratio * s * (Vp[C1x] - Vp[C2x]) + high_ratio * r * (Vp[C1y] - Vp[C2y]) ) ) * 
+                                ( (Vp[v1x] - Vp[v2x]) -  (high_ratio * s * (Vp[C1x] - Vp[C2x]) + high_ratio * r * (Vp[C1y] - Vp[C2y]) ) )
+                                                                                     + 
+                                ( (Vp[v1y] - Vp[v2y]) -  (width_ratio * -r * (Vp[C1x] - Vp[C2x]) + width_ratio * s * (Vp[C1y] - Vp[C2y]) ) ) * 
+                                ( (Vp[v1y] - Vp[v2y]) -  (width_ratio * -r * (Vp[C1x] - Vp[C2x]) + width_ratio * s * (Vp[C1y] - Vp[C2y]) ) )
+                            );
                     // clang-format on
+                    D += (DST + DLT);
                 }
             }
 
-            //  Boundary Conditions
-            for (int row = 0; row < meshRows; row++) {
-                for (int col = 0; col < meshCols; col++) {
+            // Set up grid orientation constraint
+            for (int row = 0; row < meshRows - 1; row++) 
+            {
+                for (int col = 0; col < meshCols - 1; col++) 
+                {
                     int vertices = row * meshCols + col;
+                    const int vax = vertices;
+                    const int vay = vertices + nVertices;
+                    const int vbx = vertices + meshCols;
+                    const int vby = vertices + meshCols + nVertices;
+                    const int vcx = vertices + meshCols + 1;
+                    const int vcy = vertices + meshCols + 1 + nVertices;
+                    const int vdx = vertices + 1;
+                    const int vdy = vertices + 1 + nVertices;
+                    // clang-format off
+                    const Scalar DOR = \
+                        (Vp[vay] - Vp[vby]) * (Vp[vay] - Vp[vby]) + \
+                        (Vp[vdy] - Vp[vcy]) * (Vp[vdy] - Vp[vcy]) + \
+                        (Vp[vax] - Vp[vdx]) * (Vp[vax] - Vp[vdx]) + \
+                        (Vp[vbx] - Vp[vcx]) * (Vp[vbx] - Vp[vcx]);
+                    // clang-format on
+                    D += DOR;
                 }
             }
+
             return D;
         }
     };
@@ -314,9 +349,24 @@ namespace Image {
             typedef typename WrappingProblem::MatrixType MatrixType;
             // Initialize wrapping problem
             WrappingProblem f(alpha, patches, meshRows, meshCols, nVertices, origH, origW, targetHeight, targetWidth);
-
+            std::cout << nVertices << std::endl;
             // Create deformed vercices to be solved
-            TVector Vp = TVector::Random(nVertices * 2);
+            TVector Vp = TVector::Zero(nVertices * 2);
+
+            // first check the given derivative
+            // there is output, if they are NOT similar to finite differences
+            bool probably_correct = f.checkGradient(Vp);
+            Criteria<double> crit = Criteria<double>::defaults(); // Create a Criteria class to set the solver's stop conditions
+            crit.iterations = 10000;                              
+
+            // choose a solver
+            ConjugatedGradientDescentSolver<WrappingProblem> solver;
+            solver.setStopCriteria(crit);
+            std::cout << "Start to minimize ...";
+            // and minimize the function
+            solver.minimize(f, Vp);
+            std::cout << "Done" << std::endl;
+
         }
 
         template <typename T>

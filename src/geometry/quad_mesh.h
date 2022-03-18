@@ -73,31 +73,6 @@ namespace Geometry {
             return {v1Index, v2Index};
         }
 
-        Eigen::Vector2f
-        getDstDltTerm(const std::shared_ptr<MeshEdge>& reprEdge,
-            const std::size_t H, const std::size_t W, const std::size_t newH, const std::size_t newW) const
-        {
-            Eigen::Vector2f e = v[0]->uv - v[1]->uv;
-            Eigen::Vector2f c = reprEdge->v[0]->uv - reprEdge->v[1]->uv;
-            Eigen::Matrix2f m{
-                {c(0), c(1)},
-                {-c(1), c(0)}};
-            Eigen::Vector2f s_r = m.inverse() * e;
-            Eigen::Matrix2f T{
-                {s_r(0), s_r(1)},
-                {-s_r(1), s_r(0)}};
-            Eigen::Vector2f cTrans = T * c;
-            Eigen::Vector2f eTrans = T * e;
-            float DstTerm = (eTrans - T * cTrans).squaredNorm();
-
-            Eigen::Matrix2f L{
-                {newH / H, 0},
-                {0, newW / W}};
-
-            float DltTerm = (eTrans - L * T * cTrans).squaredNorm();
-            return {DstTerm, DltTerm};
-        }
-
         void computeCentroid()
         {
             centroid = 0.5 * (v[0]->uv + v[1]->uv);
