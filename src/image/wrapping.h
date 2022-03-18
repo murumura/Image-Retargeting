@@ -5,6 +5,8 @@
 #include <image/utils.h>
 #include <iostream>
 #include <list>
+#include <numerical/cg_solver.h>
+#include <numerical/problem.h>
 #include <vector>
 namespace Image {
     const int r = 0;
@@ -45,8 +47,12 @@ namespace Image {
             patchColor = patchColor_;
         }
 
-        void setPatchMesh()
+        void setPatchMesh(const std::vector<Eigen::Vector2f>& vertices_uv,
+            const std::vector<std::pair<Geometry::LocationType, Geometry::LocationType>>& loc_types)
         {
+            patchMesh = std::make_shared<Geometry::PatchMesh>(vertices_uv, loc_types);
+            computeCentroid();
+            computeReprEdge();
         }
 
         void computeCentroid()
@@ -61,6 +67,12 @@ namespace Image {
                 reprEdge = patchMesh->getCentralEdge();
         }
 
+        void drawOnCanvas(
+            Eigen::Tensor<float, 3, Eigen::RowMajor>& canvas, float quadHeight, float quadWidth) const
+        {
+            patchMesh->drawOnCanvas(canvas, quadHeight, quadWidth);
+        }
+
         bool operator<(const Patch& p) const
         {
             return segmentId < p.segmentId;
@@ -69,7 +81,107 @@ namespace Image {
 
     struct CachedCoordMapping {
         Eigen::Vector2i pixel_coord;
-        int patch_index; // corresponding patch index of stored segmentId
+        int patch_index; // corresponding patch index of stored segment Id
+    };
+
+    using namespace Numerical;
+
+    template <typename Scalar>
+    class WrappingProblem : public Problem<Scalar> {
+    public:
+        using typename Problem<Scalar>::TVector;
+        float alpha;
+        int meshRows, meshCols;
+        int newH, newW;
+        int origH, origW;
+        int nVertices;
+        std::vector<Image::Patch> patches;
+
+        explicit WrappingProblem(
+            float alpha_,
+            std::vector<Image::Patch> patches_,
+            int meshRows_,
+            int meshCols_,
+            int nVertices_,
+            int origH_, int origW_,
+            int newH_, int newW_) : alpha{alpha_},
+                                    patches{patches_},
+                                    meshRows{meshRows_},
+                                    meshCols{meshCols_},
+                                    nVertices{nVertices_},
+                                    origH{origH_},
+                                    origW{origW_},
+                                    newH{newH_},
+                                    newW{newW_}
+        {
+        }
+
+        // set up objective function
+        Scalar value(const TVector& Vp)
+        {
+            const Eigen::Matrix2f L{
+                {newH / origH, 0},
+                {0, newW / origW}};
+            const float high_ratio = L(0, 0);
+            const float width_ratio = L(1, 1);
+
+            Scalar D = 0;
+            for (int i = 0; i < patches.size(); i++) {
+                float s_i = patches[i].saliencyValue;
+                const std::vector<std::shared_ptr<Geometry::MeshEdge>> edgesList = patches[i].patchMesh->edges;
+                if (edgesList.empty())
+                    continue;
+                const std::shared_ptr<Geometry::MeshEdge> repr_edge = patches[i].reprEdge;
+                Eigen::Vector2f c = repr_edge->v[0]->uv - repr_edge->v[1]->uv;
+
+                Eigen::Matrix2f M{
+                    {c(0), c(1)},
+                    {-c(1), c(0)},
+                };
+                Eigen::Matrix2f M_inv = M.inverse();
+
+                const Eigen::Vector2i repr_vertices = repr_edge->deserialize(meshCols);
+                const int C1x = repr_vertices(0);
+                const int C1y = repr_vertices(0) + nVertices;
+                const int C2x = repr_vertices(1);
+                const int C2y = repr_vertices(1) + nVertices;
+
+                for (int j = 0; j < edgesList.size(); j++) {
+                    const Eigen::Vector2f e = edgesList[j]->v[0]->uv - edgesList[j]->v[1]->uv;
+                    const Eigen::Vector2f s_r = M_inv * e;
+                    const float s = s_r(0);
+                    const float r = s_r(1);
+
+                    const Eigen::Vector2i vertices = edgesList[j]->deserialize(meshCols);
+                    const int v1x = vertices(0);
+                    const int v1y = vertices(0) + nVertices;
+                    const int v2x = vertices(1);
+                    const int v2y = vertices(1) + nVertices;
+
+                    // clang-format off
+                    // Set up patch transformation constraint
+                    const Scalar Dst =  \
+                        (   
+                            alpha * s_i * 
+                            (
+                                ( (Vp[v1x] - Vp[v2x]) -  s * (Vp[C1x] - Vp[C2x]) ) * ( (Vp[v1x] - Vp[v2x]) -  s * (Vp[C1x] - Vp[C2x]) )  +
+                                ( (Vp[v1y] - Vp[v2y]) +  r * (Vp[C1y] - Vp[C2y]) ) * ( (Vp[v1y] - Vp[v2y]) +  r * (Vp[C1y] - Vp[C2y]) )
+                            )
+                        );
+
+                    // Set up grid orientation constraint
+                    // clang-format on
+                }
+            }
+
+            //  Boundary Conditions
+            for (int row = 0; row < meshRows; row++) {
+                for (int col = 0; col < meshCols; col++) {
+                    int vertices = row * meshCols + col;
+                }
+            }
+            return D;
+        }
     };
 
     class Wrapping {
@@ -85,20 +197,23 @@ namespace Image {
         {
             const int origH = segMapping.dimension(0);
             const int origW = segMapping.dimension(1);
-            const int meshCols = origH / quadSize + 1;
-            const int meshRows = origW / quadSize + 1;
-            const float quad_width = (float)(origH) / (meshCols - 1);
-            const float quad_height = (float)(origW) / (meshRows - 1);
+            meshCols = origW / quadSize + 1;
+            meshRows = origH / quadSize + 1;
+
+            quadWidth = (float)(origW) / (meshCols - 1);
+            quadHeight = (float)(origH) / (meshRows - 1);
 
             std::function<Eigen::Vector2i(int, int)> coordTransform = [&](int mesh_row, int mesh_col) {
-                int pixel_row = mesh_row * quad_height;
-                int pixel_col = mesh_col * quad_width;
+                int pixel_row = mesh_row * quadHeight;
+                int pixel_col = mesh_col * quadWidth;
                 // boundary case
                 if (mesh_col == meshCols - 1)
                     pixel_col--;
                 if (mesh_row == meshRows - 1)
                     pixel_row--;
-                return Eigen::Vector2i{pixel_row, pixel_col};
+                pixel_row = std::min(pixel_row, origH - 1);
+                pixel_col = std::min(pixel_col, origW - 1);
+                return Eigen::Vector2i{std::max(pixel_row, 0), std::max(pixel_col, 0)};
             };
 
             std::function<int(int)> findPatchIndex = [&](int segId) {
@@ -107,9 +222,7 @@ namespace Image {
                         return i;
                 return -1;
             };
-
-            // Each entry store an transformed coordinates
-            std::vector<CachedCoordMapping> cache_mappings;
+            nVertices = meshRows * meshCols;
             cache_mappings.reserve(meshRows * meshCols);
 
             for (int row = 0; row < meshRows; row++)
@@ -117,27 +230,98 @@ namespace Image {
                     int index = row * meshCols + col;
                     cache_mappings[index].pixel_coord = coordTransform(row, col);
                     int segId = segMapping(cache_mappings[index].pixel_coord(0), cache_mappings[index].pixel_coord(1), 0);
-                    assert(cache_mappings[index].pixel_coord(0) >=0 && cache_mappings[index].pixel_coord(0) < origH);
-                    assert(cache_mappings[index].pixel_coord(1) >=0 && cache_mappings[index].pixel_coord(1) < origW);
                     cache_mappings[index].patch_index = findPatchIndex(segId);
-                    if (cache_mappings[index].patch_index == -1)
-                        std::cout << segId << std::endl;
                 }
 
+            std::vector<std::vector<Eigen::Vector2f>> vertices_uvs(patches.size());
+            std::vector<std::vector<std::pair<Geometry::LocationType, Geometry::LocationType>>> vertices_locs(patches.size());
+
+            std::function<std::pair<Geometry::LocationType, Geometry::LocationType>(int, int)> locationType = [&](int row, int col) {
+                Geometry::LocationType typeY{Geometry::LocationType::Regular}, typeX{Geometry::LocationType::Regular};
+                // precache boundary conditions for later constraint
+                if (row == 0)
+                    typeY = Geometry::LocationType::TopBoundary;
+                else if (row == meshRows - 1)
+                    typeY = Geometry::LocationType::BottomBoundary;
+                if (col == 0)
+                    typeX = Geometry::LocationType::LeftBoundary;
+                else if (col == meshCols - 1)
+                    typeX = Geometry::LocationType::RightBoundary;
+                return std::make_pair(typeY, typeX);
+            };
+
+            for (int row = 0; row < meshRows - 1; row++)
+                for (int col = 0; col < meshCols - 1; col++) {
+                    int v = row * meshCols + col;
+
+                    // iterate vertices of each quad in CCW order
+                    std::array<int, 4> quad_uv = {
+                        v, // top-left corner
+                        v + meshCols, // botton-left corner
+                        v + meshCols + 1, // botton-right corner
+                        v + 1 // top-right corner
+                    };
+
+                    std::array<std::pair<int, int>, 4> uv_mapping = {
+                        std::make_pair(row, col),
+                        std::make_pair(row + 1, col),
+                        std::make_pair(row + 1, col + 1),
+                        std::make_pair(row, col + 1)};
+
+                    for (int i = 0; i < 4; i++) {
+                        int pidx1 = cache_mappings[quad_uv[i]].patch_index;
+                        int pidx2 = cache_mappings[quad_uv[(i + 1) == 4 ? 0 : (i + 1)]].patch_index;
+                        int r1, c1, r2, c2;
+                        std::tie(r1, c1) = uv_mapping[i];
+                        std::tie(r2, c2) = uv_mapping[(i + 1) == 4 ? 0 : (i + 1)];
+                        vertices_uvs[pidx1].insert(vertices_uvs[pidx1].end(), {Eigen::Vector2f{r1, c1}, Eigen::Vector2f{r2, c2}});
+                        vertices_locs[pidx1].insert(vertices_locs[pidx1].end(), {
+                                                                                    locationType(r1, c1),
+                                                                                    locationType(r2, c2),
+                                                                                });
+
+                        if (pidx1 != pidx2) {
+                            vertices_uvs[pidx2].insert(vertices_uvs[pidx2].end(), {Eigen::Vector2f{r1, c1}, Eigen::Vector2f{r2, c2}});
+                            vertices_locs[pidx2].insert(vertices_locs[pidx2].end(), {
+                                                                                        locationType(r1, c1),
+                                                                                        locationType(r2, c2),
+                                                                                    });
+                        }
+                    }
+                }
+
+            // Maintain edge list of each patch
             for (int i = 0; i < patches.size(); i++)
-                patches[i].setPatchMesh();
+                patches[i].setPatchMesh(vertices_uvs[i], vertices_locs[i]);
         }
 
-        void patchTransformConstraint()
+        template <typename T>
+        void drawMeshGrid(
+            const Eigen::Tensor<T, 3, Eigen::RowMajor>& canvas,
+            const std::string filename,
+            std::vector<Image::Patch>& patches)
         {
+            Eigen::Tensor<float, 3, Eigen::RowMajor> C = canvas.template cast<float>();
+            for (int i = 0; i < patches.size(); i++)
+                patches[i].drawOnCanvas(C, quadHeight, quadWidth);
+            savePNG<uint8_t, 3>(filename, C.cast<uint8_t>());
         }
 
-        void gridOrientationConstraint()
+        void buildAndSolveConstraint(std::vector<Image::Patch>& patches, int origH, int origW)
         {
+            typedef WrappingProblem<double> WrappingProblem;
+            typedef typename WrappingProblem::TVector TVector;
+            typedef typename WrappingProblem::MatrixType MatrixType;
+            // Initialize wrapping problem
+            WrappingProblem f(alpha, patches, meshRows, meshCols, nVertices, origH, origW, targetHeight, targetWidth);
+
+            // Create deformed vercices to be solved
+            TVector Vp = TVector::Random(nVertices * 2);
         }
 
         template <typename T>
         void reconstructImage(
+            const Eigen::Tensor<T, 3, Eigen::RowMajor>& input,
             const Eigen::Tensor<int, 3, Eigen::RowMajor>& segMapping,
             std::vector<Image::Patch>& patches,
             Eigen::Tensor<T, 3, Eigen::RowMajor>& resizedImage)
@@ -151,6 +335,11 @@ namespace Image {
 
             // Build mesh grid & setup patch mesh
             buildMeshGrid(segMapping, patches);
+
+            // Plot quad mesh upon original image
+            drawMeshGrid<T>(input, "InputGrid", patches);
+
+            buildAndSolveConstraint(patches, origH, origW);
         }
 
         static Eigen::Tensor<float, 3, Eigen::RowMajor> applyColorMap(
@@ -242,6 +431,12 @@ namespace Image {
         float weightDST;
         float weightDLT;
         float quadSize; ///< grid size in pixels
+        float quadWidth, quadHeight;
+        int meshCols, meshRows;
+
+        int nVertices; ///< number of vertices
+        // Each entry store an transformed coordinates
+        std::vector<CachedCoordMapping> cache_mappings;
     };
 
     std::shared_ptr<Wrapping> createWrapping(std::size_t targetH, std::size_t targetW, float alpha, float quadSize)

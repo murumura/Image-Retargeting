@@ -86,15 +86,19 @@ set (RESIZING_HEADER
     # geometry header/sources
     ${CMAKE_SOURCE_DIR}/src/geometry/common.h
     ${CMAKE_SOURCE_DIR}/src/geometry/quad_mesh.h
-    # numerical headers
+    # numerical headers/sources
     ${CMAKE_SOURCE_DIR}/src/numerical/types.h
+    ${CMAKE_SOURCE_DIR}/src/numerical/cg_solver.h
+    ${CMAKE_SOURCE_DIR}/src/numerical/solver.h
+    ${CMAKE_SOURCE_DIR}/src/numerical/problem.h
+    ${CMAKE_SOURCE_DIR}/src/numerical/linesearch.h
 )
 
 if(CUDA_FOUND)
     list(APPEND RESIZING_HEADER  ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.cu)
 endif()
 set (RESIZING_SOURCE
-    ${CMAKE_SOURCE_DIR}/src/resize.cpp
+    ${CMAKE_SOURCE_DIR}/src/retargeting.cpp
 )
 
 add_executable(patch_based_resizing

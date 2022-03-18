@@ -8,7 +8,7 @@ int main(int argc, const char* argv[])
 {
     struct myOpts
     {
-        std::string InputImage{"./datasets/maple.png"};
+        std::string InputImage{"./datasets/butterfly.png"};
         float Sigma{0.5};
         float SegmentK{500.0};
         int MinSize{100};
@@ -42,7 +42,9 @@ int main(int argc, const char* argv[])
         {"--SaveScaledSaliency", &myOpts::SaveScaledSaliency, "Whether to save saliency result of each scale."},
         {"--SaveSaliency", &myOpts::SaveSaliency, "Whether to save saliency result."},
         {"--newH", &myOpts::newH, "Resizing Height."},
-        {"--newW", &myOpts::newW, "Resizing Weight."}
+        {"--newW", &myOpts::newW, "Resizing Weight."},
+        {"--Alpha", &myOpts::Alpha, "Weighting factor for the energy terms Dst and Dlt."},
+        {"--QuadSize", &myOpts::QuadSize, "Height/Width of each quad to be deformed."}
     });
 
     auto args = parser->parse(argc, argv);
@@ -107,5 +109,5 @@ int main(int argc, const char* argv[])
         args.QuadSize
     );
 
-    wrapping->reconstructImage<uint8_t>(segMapping, patches, resizedImage);
+    wrapping->reconstructImage<uint8_t>(input, segMapping, patches, resizedImage);
 }

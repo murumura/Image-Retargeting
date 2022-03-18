@@ -1,9 +1,8 @@
 #ifndef UTILS_H
 #define UTILS_H
-#include <stddef.h>
-
 #include <cassert>
 #include <memory>
+#include <stddef.h>
 #include <type_traits>
 #include <utility>
 namespace Utils {

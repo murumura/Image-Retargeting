@@ -2,6 +2,7 @@
 #define QUAD_MESH_H
 #include <algorithm>
 #include <geometry/common.h>
+#include <image/image.h>
 #include <iostream>
 namespace Geometry {
 
@@ -65,6 +66,13 @@ namespace Geometry {
             return (*v[0].get() == v1 && *v[1].get() == v2) || (*v[0].get() == v2 && *v[1].get() == v1);
         }
 
+        Eigen::Vector2i deserialize(const int meshCols)
+        {
+            int v1Index = v[0]->uv(0) * meshCols + v[0]->uv(1);
+            int v2Index = v[1]->uv(0) * meshCols + v[1]->uv(1);
+            return {v1Index, v2Index};
+        }
+
         Eigen::Vector2f
         getDstDltTerm(const std::shared_ptr<MeshEdge>& reprEdge,
             const std::size_t H, const std::size_t W, const std::size_t newH, const std::size_t newW) const
@@ -110,17 +118,12 @@ namespace Geometry {
 
     class PatchMesh {
     public:
-        static std::shared_ptr<PatchMesh> createPatchMesh()
-        {
-        }
-
         PatchMesh(
             const std::vector<Eigen::Vector2f>& vertices_uv,
             const std::vector<std::pair<LocationType, LocationType>>& loc_types)
         {
             nEdges = vertices_uv.size() / 2;
             constexpr int offset = 2;
-
             for (int i = 0; i < vertices_uv.size(); i += offset) {
                 edges.emplace_back(
                     std::make_shared<MeshEdge>(
@@ -136,6 +139,8 @@ namespace Geometry {
         {
             float minDist = 2e5;
             int minIdx = 0;
+            if (edges.empty())
+                return nullptr;
             for (int k = 0; k < edges.size(); k++) {
                 float dist = (edges[k]->centroid - centroid).squaredNorm();
                 if (dist < minDist) {
@@ -150,6 +155,40 @@ namespace Geometry {
         {
             for (int i = 0; i < nEdges; i++)
                 centroid += (edges[i]->centroid / nEdges);
+        }
+
+        void drawOnCanvas(Eigen::Tensor<float, 3, Eigen::RowMajor>& canvas, float quadHeight, float quadWidth)
+        {
+            const int C = canvas.dimension(2);
+            const int H = canvas.dimension(0);
+            const int W = canvas.dimension(1);
+            // plot dot on canvas
+            for (int i = 0; i < edges.size(); i++) {
+                Eigen::Vector2f v_l = edges[i]->v[0]->uv;
+                Eigen::Vector2f v_r = edges[i]->v[1]->uv;
+
+                int r1 = v_l(0) * quadHeight;
+                int c1 = v_l(1) * quadWidth;
+                int r2 = v_r(0) * quadHeight;
+                int c2 = v_r(1) * quadWidth;
+                r1 = std::min(r1, H - 1);
+                c1 = std::min(c1, W - 1);
+                r2 = std::min(r2, H - 1);
+                c2 = std::min(c2, W - 1);
+
+                //store discrete point between vertices
+                std::vector<std::pair<int, int>> rc_lines;
+                for (int r_ = std::min(r1, r2); r_ <= std::max(r1, r2); r_++)
+                    for (int c_ = std::min(c1, c2); c_ <= std::max(c1, c2); c_++)
+                        rc_lines.push_back(std::make_pair(r_, c_));
+
+                for (int d = 0; d < C; d++) {
+                    canvas(r1, c1, d) = 255.0;
+                    canvas(r2, c2, d) = 255.0;
+                    for (auto& p : rc_lines)
+                        canvas(p.first, p.second, d) = 255.0;
+                }
+            }
         }
 
         Eigen::Vector2f centroid{0, 0};
