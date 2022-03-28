@@ -13,7 +13,7 @@
 template <typename Options>
 class CommndLineParser: Options{
 public:
-    // each template parameter is of type  pointer to member of Opts
+    // each template parameter is of type pointer to member of Opts
     using OptPtr = \
         std::variant<std::string Options::*, int Options::*, float Options::*, bool Options::*>;
     using Args = std::tuple<std::string, OptPtr, std::string>; 

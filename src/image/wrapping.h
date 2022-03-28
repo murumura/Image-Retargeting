@@ -6,7 +6,6 @@
 #include <iostream>
 #include <list>
 #include <numerical/cg_solver.h>
-#include <numerical/problem.h>
 #include <vector>
 namespace Image {
     const int r = 0;
@@ -84,145 +83,10 @@ namespace Image {
         int patch_index; // corresponding patch index of stored segment Id
     };
 
-    using namespace Numerical;
-
-    template <typename Scalar>
-    class WrappingProblem : public Problem<Scalar> {
-    public:
-        using typename Problem<Scalar>::TVector;
-        float alpha;
-        int meshRows, meshCols;
-        int newH, newW;
-        int origH, origW;
-        int nVertices;
-        std::vector<Image::Patch> patches;
-
-        explicit WrappingProblem(
-            float alpha_,
-            std::vector<Image::Patch> patches_,
-            int meshRows_,
-            int meshCols_,
-            int nVertices_,
-            int origH_, int origW_,
-            int newH_, int newW_) : alpha{alpha_},
-                                    patches{patches_},
-                                    meshRows{meshRows_},
-                                    meshCols{meshCols_},
-                                    nVertices{nVertices_},
-                                    origH{origH_},
-                                    origW{origW_},
-                                    newH{newH_},
-                                    newW{newW_}
-        {
-        }
-
-        // set up objective function
-        Scalar value(const TVector& Vp)
-        {
-            const Eigen::Matrix2f L{
-                {newH / origH, 0},
-                {0, newW / origW}};
-
-            const float high_ratio = L(0, 0);
-            const float width_ratio = L(1, 1);
-
-            Scalar D = 0;
-            Scalar Dtop = 0;
-            Scalar Dbottom = 0;
-            Scalar Dleft = 0;
-            Scalar Dright = 0;
-            for (int i = 0; i < patches.size(); i++) {
-                float s_i = patches[i].saliencyValue;
-                const std::vector<std::shared_ptr<Geometry::MeshEdge>> edgesList = patches[i].patchMesh->edges;
-                if (edgesList.empty())
-                    continue;
-                const std::shared_ptr<Geometry::MeshEdge> repr_edge = patches[i].reprEdge;
-                Eigen::Vector2f c = repr_edge->v[0]->uv - repr_edge->v[1]->uv;
-
-                Eigen::Matrix2f M{
-                    {c(1), c(0)},
-                    {-c(0), c(1)},
-                };
-
-                Eigen::Matrix2f M_inv = M.inverse();
-
-                const Eigen::Vector2i repr_vertices = repr_edge->deserialize(meshCols);
-                const int C1x = repr_vertices(0);
-                const int C1y = repr_vertices(0) + nVertices;
-                const int C2x = repr_vertices(1);
-                const int C2y = repr_vertices(1) + nVertices;
-
-                for (int j = 0; j < edgesList.size(); j++) {
-                    const Eigen::Vector2f e = edgesList[j]->v[0]->uv - edgesList[j]->v[1]->uv;
-                    const Eigen::Vector2f s_r = M_inv * e;
-                    const float s = s_r(0);
-                    const float r = s_r(1);
-
-                    const Eigen::Vector2i vertices = edgesList[j]->deserialize(meshCols);
-                    const int v1x = vertices(0);
-                    const int v1y = vertices(0) + nVertices;
-                    const int v2x = vertices(1);
-                    const int v2y = vertices(1) + nVertices;
-
-                    // clang-format off
-                    // Set up patch transformation constraint
-                    const Scalar DST =  \
-                            alpha * s_i * 
-                            (
-                                ( (Vp[v1x] - Vp[v2x]) -  (s * (Vp[C1x] - Vp[C2x]) + r * (Vp[C1y] - Vp[C2y]) ) ) * 
-                                ( (Vp[v1x] - Vp[v2x]) -  (s * (Vp[C1x] - Vp[C2x]) + r * (Vp[C1y] - Vp[C2y]) ) )
-                                                                                     + 
-                                ( (Vp[v1y] - Vp[v2y]) -  (-r * (Vp[C1x] - Vp[C2x]) + s * (Vp[C1y] - Vp[C2y]) ) ) * 
-                                ( (Vp[v1y] - Vp[v2y]) -  (-r * (Vp[C1x] - Vp[C2x]) + s * (Vp[C1y] - Vp[C2y]) ) )
-                            );
-
-                    const Scalar DLT = \    
-                            (1 - alpha) * (1 - s_i) *
-                            (
-                                ( (Vp[v1x] - Vp[v2x]) -  (high_ratio * s * (Vp[C1x] - Vp[C2x]) + high_ratio * r * (Vp[C1y] - Vp[C2y]) ) ) * 
-                                ( (Vp[v1x] - Vp[v2x]) -  (high_ratio * s * (Vp[C1x] - Vp[C2x]) + high_ratio * r * (Vp[C1y] - Vp[C2y]) ) )
-                                                                                     + 
-                                ( (Vp[v1y] - Vp[v2y]) -  (width_ratio * -r * (Vp[C1x] - Vp[C2x]) + width_ratio * s * (Vp[C1y] - Vp[C2y]) ) ) * 
-                                ( (Vp[v1y] - Vp[v2y]) -  (width_ratio * -r * (Vp[C1x] - Vp[C2x]) + width_ratio * s * (Vp[C1y] - Vp[C2y]) ) )
-                            );
-                    // clang-format on
-                    D += (DST + DLT);
-                }
-            }
-
-            // Set up grid orientation constraint
-            for (int row = 0; row < meshRows - 1; row++) 
-            {
-                for (int col = 0; col < meshCols - 1; col++) 
-                {
-                    int vertices = row * meshCols + col;
-                    const int vax = vertices;
-                    const int vay = vertices + nVertices;
-                    const int vbx = vertices + meshCols;
-                    const int vby = vertices + meshCols + nVertices;
-                    const int vcx = vertices + meshCols + 1;
-                    const int vcy = vertices + meshCols + 1 + nVertices;
-                    const int vdx = vertices + 1;
-                    const int vdy = vertices + 1 + nVertices;
-                    // clang-format off
-                    const Scalar DOR = \
-                        (Vp[vay] - Vp[vby]) * (Vp[vay] - Vp[vby]) + \
-                        (Vp[vdy] - Vp[vcy]) * (Vp[vdy] - Vp[vcy]) + \
-                        (Vp[vax] - Vp[vdx]) * (Vp[vax] - Vp[vdx]) + \
-                        (Vp[vbx] - Vp[vcx]) * (Vp[vbx] - Vp[vcx]);
-                    // clang-format on
-                    D += DOR;
-                }
-            }
-
-            return D;
-        }
-    };
-
     class Wrapping {
     public:
-        explicit Wrapping(std::size_t targetHeight_, std::size_t targetWidth_, float alpha_, float quadSize_)
-            : alpha{alpha_}, targetHeight{targetHeight_}, targetWidth{targetWidth_}, quadSize{quadSize_}
+        explicit Wrapping(std::size_t targetHeight_, std::size_t targetWidth_, float alpha_, float quadSize_, float weightDST_, float weightDLT_, float weightDOR_)
+            : alpha{alpha_}, targetHeight{targetHeight_}, targetWidth{targetWidth_}, quadSize{quadSize_}, weightDLT{weightDLT_}, weightDST{weightDST_}, weightDOR{weightDOR_}
         {
         }
 
@@ -258,7 +122,7 @@ namespace Image {
                 return -1;
             };
             nVertices = meshRows * meshCols;
-            cache_mappings.reserve(meshRows * meshCols);
+            cache_mappings.reserve(nVertices);
 
             for (int row = 0; row < meshRows; row++)
                 for (int col = 0; col < meshCols; col++) {
@@ -314,16 +178,14 @@ namespace Image {
                                                                                     locationType(r1, c1),
                                                                                     locationType(r2, c2),
                                                                                 });
-
-                        if (pidx1 != pidx2) {
-                            vertices_uvs[pidx2].insert(vertices_uvs[pidx2].end(), {Eigen::Vector2f{r1, c1}, Eigen::Vector2f{r2, c2}});
-                            vertices_locs[pidx2].insert(vertices_locs[pidx2].end(), {
-                                                                                        locationType(r1, c1),
-                                                                                        locationType(r2, c2),
-                                                                                    });
-                        }
                     }
+                    nQuads++;
                 }
+
+            std::cout << "Number of MeshCols(top/bottom vertices) " << meshCols << std::endl;
+            std::cout << "Number of MeshRows(left/right vertices) " << meshRows << std::endl;
+            std::cout << "Number of Quads: " << nQuads << std::endl;
+            std::cout << "Number of Vertices: " << nVertices << std::endl;
 
             // Maintain edge list of each patch
             for (int i = 0; i < patches.size(); i++)
@@ -344,29 +206,176 @@ namespace Image {
 
         void buildAndSolveConstraint(std::vector<Image::Patch>& patches, int origH, int origW)
         {
-            typedef WrappingProblem<double> WrappingProblem;
-            typedef typename WrappingProblem::TVector TVector;
-            typedef typename WrappingProblem::MatrixType MatrixType;
-            // Initialize wrapping problem
-            WrappingProblem f(alpha, patches, meshRows, meshCols, nVertices, origH, origW, targetHeight, targetWidth);
-            std::cout << nVertices << std::endl;
-            // Create deformed vercices to be solved
-            TVector Vp = TVector::Zero(nVertices * 2);
+            nVbottom = nVtop = meshCols;
+            nVleft = nVright = meshRows;
+            const int rows = 16 * nQuads /*8(DST) + 8(DLT)*/ + 4 * nQuads /*DOR*/ + nVtop + nVbottom + nVleft + nVright /*boundary condition*/;
 
-            // first check the given derivative
-            // there is output, if they are NOT similar to finite differences
-            bool probably_correct = f.checkGradient(Vp);
-            Criteria<double> crit = Criteria<double>::defaults(); // Create a Criteria class to set the solver's stop conditions
-            crit.iterations = 10000;                              
+            const int columns = nVertices * 2;
+            Numerical::CGSolver solver(rows, columns);
+            const float high_ratio = static_cast<float>(targetHeight) / origH;
+            const float width_ratio = static_cast<float>(targetWidth) / origW;
 
-            // choose a solver
-            ConjugatedGradientDescentSolver<WrappingProblem> solver;
-            solver.setStopCriteria(crit);
-            std::cout << "Start to minimize ...";
-            // and minimize the function
-            solver.minimize(f, Vp);
-            std::cout << "Done" << std::endl;
+            int rowIdx = 0;
+            int rhsRowIdx = 0;
+            Eigen::VectorXd rhs(rows);
 
+            for (int i = 0; i < patches.size(); i++) {
+                float s_i = patches[i].saliencyValue;
+                const std::vector<std::shared_ptr<Geometry::MeshEdge>> edgesList = patches[i].patchMesh->edges;
+                if (edgesList.empty())
+                    continue;
+
+                const std::shared_ptr<Geometry::MeshEdge> repr_edge = patches[i].reprEdge;
+                Eigen::Vector2f c = repr_edge->v[1]->uv - repr_edge->v[0]->uv;
+
+                Eigen::Matrix2f M{
+                    {c(1), c(0)},
+                    {c(0), -c(1)},
+                };
+
+                Eigen::Matrix2f M_inv;
+
+                if (M.determinant() > 0)
+                    M_inv = M.inverse();
+                else
+                    M_inv = M.completeOrthogonalDecomposition().pseudoInverse();
+
+                const Eigen::Vector2i repr_vertices = repr_edge->deserialize(meshCols);
+                const int c1X = repr_vertices(0);
+                const int c1Y = repr_vertices(0) + nVertices;
+                const int c2X = repr_vertices(1);
+                const int c2Y = repr_vertices(1) + nVertices;
+
+                for (int j = 0; j < edgesList.size(); j++) {
+                    const Eigen::Vector2f e = edgesList[j]->v[1]->uv - edgesList[j]->v[0]->uv;
+                    const Eigen::Vector2f s_r = M_inv * e;
+                    const float s = s_r(0);
+                    const float r = s_r(1);
+
+                    const Eigen::Vector2i vertices = edgesList[j]->deserialize(meshCols);
+                    const int vaX = vertices(0);
+                    const int vaY = vertices(0) + nVertices;
+                    const int vbX = vertices(1);
+                    const int vbY = vertices(1) + nVertices;
+
+                    /*-- Set up patch transformation constraint --*/
+                    /*---DOR---*/
+                    // s(vax - vbx) + r(vay - vby) - s(c1x - c2x) - r(c1y - c2y)
+                    solver.addSysElement(rowIdx, vaX, alpha * s_i * s * weightDST);
+                    solver.addSysElement(rowIdx, vbX, -alpha * s_i * s * weightDST);
+                    solver.addSysElement(rowIdx, vaY, alpha * s_i * r * weightDST);
+                    solver.addSysElement(rowIdx, vbY, -alpha * s_i * r * weightDST);
+                    solver.addSysElement(rowIdx, c1X, -alpha * s_i * s * weightDST);
+                    solver.addSysElement(rowIdx, c2X, alpha * s_i * s * weightDST);
+                    solver.addSysElement(rowIdx, c1Y, -alpha * s_i * r * weightDST);
+                    solver.addSysElement(rowIdx, c2Y, alpha * s_i * r * weightDST);
+                    rhs(rhsRowIdx) = 0;
+                    rowIdx++;
+                    rhsRowIdx++;
+                    // -r(vax - vbx) + s(vay - vby)  + r(c1x - c2x) - s(c1y - c2y)
+                    solver.addSysElement(rowIdx, vaX, -alpha * s_i * r * weightDST);
+                    solver.addSysElement(rowIdx, vbX, alpha * s_i * r * weightDST);
+                    solver.addSysElement(rowIdx, vaY, alpha * s_i * s * weightDST);
+                    solver.addSysElement(rowIdx, vbY, -alpha * s_i * s * weightDST);
+                    solver.addSysElement(rowIdx, c1X, alpha * s_i * r * weightDST);
+                    solver.addSysElement(rowIdx, c2X, -alpha * s_i * r * weightDST);
+                    solver.addSysElement(rowIdx, c1Y, -alpha * s_i * s * weightDST);
+                    solver.addSysElement(rowIdx, c2Y, alpha * s_i * s * weightDST);
+                    rhs(rhsRowIdx) = 0;
+                    rowIdx++;
+                    rhsRowIdx++;
+
+                    /*---DLT---*/
+                    // s * (vax - vbx) + r * (vay - vby) - m'/m * s * (c1x - c2x) - m'/m * r * (c1y - c2y)
+                    solver.addSysElement(rowIdx, vaX, (1 - alpha) * (1 - s_i) * s * weightDLT);
+                    solver.addSysElement(rowIdx, vbX, -(1 - alpha) * (1 - s_i) * s * weightDLT);
+                    solver.addSysElement(rowIdx, vaY, (1 - alpha) * (1 - s_i) * r * weightDLT);
+                    solver.addSysElement(rowIdx, vbY, -(1 - alpha) * (1 - s_i) * r * weightDLT);
+                    solver.addSysElement(rowIdx, c1X, -high_ratio * (1 - alpha) * (1 - s_i) * s * weightDLT);
+                    solver.addSysElement(rowIdx, c2X, high_ratio * (1 - alpha) * (1 - s_i) * s * weightDLT);
+                    solver.addSysElement(rowIdx, c1Y, -high_ratio * (1 - alpha) * (1 - s_i) * r * weightDLT);
+                    solver.addSysElement(rowIdx, c2Y, high_ratio * (1 - alpha) * (1 - s_i) * r * weightDLT);
+                    rhs(rhsRowIdx) = 0;
+                    rowIdx++;
+                    rhsRowIdx++;
+
+                    // -r(vax - vbx) + s(vay - vby) + n'/n * r * (c1x - c2x) - n'/n * s * (c1y - c2y)
+                    solver.addSysElement(rowIdx, vaX, -(1 - alpha) * (1 - s_i) * r * weightDLT);
+                    solver.addSysElement(rowIdx, vbX, (1 - alpha) * (1 - s_i) * r * weightDLT);
+                    solver.addSysElement(rowIdx, vaY, (1 - alpha) * (1 - s_i) * s * weightDLT);
+                    solver.addSysElement(rowIdx, vbY, -(1 - alpha) * (1 - s_i) * s * weightDLT);
+                    solver.addSysElement(rowIdx, c1X, width_ratio * (1 - alpha) * (1 - s_i) * r * weightDLT);
+                    solver.addSysElement(rowIdx, c2X, -width_ratio * (1 - alpha) * (1 - s_i) * r * weightDLT);
+                    solver.addSysElement(rowIdx, c1Y, -width_ratio * (1 - alpha) * (1 - s_i) * s * weightDLT);
+                    solver.addSysElement(rowIdx, c2Y, width_ratio * (1 - alpha) * (1 - s_i) * s * weightDLT);
+                    rhs(rhsRowIdx) = 0;
+                    rowIdx++;
+                    rhsRowIdx++;
+                }
+            }
+
+            // Set up grid orientation constraint
+            for (int row = 0; row < meshRows - 1; row++) {
+                for (int col = 0; col < meshCols - 1; col++) {
+                    int vertices = row * meshCols + col;
+                    //iterate in CCW order
+                    const int vax = vertices;
+                    const int vay = vertices + nVertices;
+                    const int vbx = vertices + meshCols;
+                    const int vby = vertices + meshCols + nVertices;
+                    const int vcx = vertices + meshCols + 1;
+                    const int vcy = vertices + meshCols + 1 + nVertices;
+                    const int vdx = vertices + 1;
+                    const int vdy = vertices + 1 + nVertices;
+                    solver.addSysElement(rowIdx, vay, weightDOR);
+                    solver.addSysElement(rowIdx++, vby, -weightDOR);
+                    rhs(rhsRowIdx++) = 0;
+                    solver.addSysElement(rowIdx, vdy, weightDOR);
+                    solver.addSysElement(rowIdx++, vcy, -weightDOR);
+                    rhs(rhsRowIdx++) = 0;
+                    solver.addSysElement(rowIdx, vax, weightDOR);
+                    solver.addSysElement(rowIdx++, vdx, -weightDOR);
+                    rhs(rhsRowIdx++) = 0;
+                    solver.addSysElement(rowIdx, vbx, weightDOR);
+                    solver.addSysElement(rowIdx++, vcx, -weightDOR);
+                    rhs(rhsRowIdx++) = 0;
+                }
+            }
+
+            constexpr double HARD_CONSTRAINT = 300.0;
+
+            // Set up boundary condition
+            for (int row = 0; row < meshRows; row++) {
+                int left_bound_vx = row * meshCols;
+                int left_bound_vy = row * meshCols + nVertices;
+                int right_bound_vx = row * meshCols + meshCols - 1;
+                int right_bound_vy = row * meshCols + meshCols - 1 + nVertices;
+
+                solver.addSysElement(rowIdx++, left_bound_vx, HARD_CONSTRAINT);
+                rhs(rhsRowIdx++) = 1e-2;
+
+                solver.addSysElement(rowIdx++, right_bound_vx, HARD_CONSTRAINT);
+                rhs(rhsRowIdx++) = HARD_CONSTRAINT * (targetWidth - 1);
+            }
+
+            for (int col = 0; col < meshCols; col++) {
+                int top_bound_vx = col * meshRows;
+                int top_bound_vy = col * meshRows + nVertices;
+                int bottom_bound_vx = col * meshRows + meshRows - 1;
+                int bottom_bound_vy = col * meshRows + meshRows - 1 + nVertices;
+
+                solver.addSysElement(rowIdx++, top_bound_vy, HARD_CONSTRAINT);
+                rhs(rhsRowIdx++) = 1e-2;
+
+                solver.addSysElement(rowIdx++, bottom_bound_vy, HARD_CONSTRAINT);
+                rhs(rhsRowIdx++) = HARD_CONSTRAINT * (targetHeight - 1);
+            }
+
+            solver.setStatus(Numerical::SolverStatus::RhsStable);
+            Eigen::VectorXd Vp(columns); ///< deformed vertices to be solved
+            solver.solve(Vp, rhs);
+            //std::cout << Vp << std::endl;
+            // Record deformed vertice cooridinate
         }
 
         template <typename T>
@@ -454,12 +463,13 @@ namespace Image {
                 return patchA.saliencyValue < patchB.saliencyValue;
             };
 
-            // Normalized saliency value of each patch to 0 - 1
+            // Normalized saliency value of each patch to 0.1 - 1
             float maxSaliencyValue = (*(std::max_element(patches.begin(), patches.end(), comparison))).saliencyValue;
             float minSaliencyValue = (*(std::min_element(patches.begin(), patches.end(), comparison))).saliencyValue;
             std::for_each(patches.begin(), patches.end(),
                 [&maxSaliencyValue, &minSaliencyValue](Patch& p) {
                     p.saliencyValue = (p.saliencyValue - minSaliencyValue) / (maxSaliencyValue - minSaliencyValue);
+                    p.saliencyValue = p.saliencyValue * 0.9f + 0.1f;
                 });
 
             // Merge segementation and saliance value to create significance map
@@ -480,18 +490,19 @@ namespace Image {
         std::size_t targetHeight, targetWidth;
         float weightDST;
         float weightDLT;
+        float weightDOR;
         float quadSize; ///< grid size in pixels
         float quadWidth, quadHeight;
         int meshCols, meshRows;
 
-        int nVertices; ///< number of vertices
+        int nVertices{0}, nQuads{0}, nVleft{0}, nVright{0}, nVtop{0}, nVbottom{0}; ///< number of vertices
         // Each entry store an transformed coordinates
         std::vector<CachedCoordMapping> cache_mappings;
     };
 
-    std::shared_ptr<Wrapping> createWrapping(std::size_t targetH, std::size_t targetW, float alpha, float quadSize)
+    std::shared_ptr<Wrapping> createWrapping(std::size_t targetH, std::size_t targetW, float alpha, float quadSize, float weightDST, float weightDLT, float weightDOR)
     {
-        std::shared_ptr<Wrapping> imageWarp = std::make_shared<Wrapping>(targetH, targetW, alpha, quadSize);
+        std::shared_ptr<Wrapping> imageWarp = std::make_shared<Wrapping>(targetH, targetW, alpha, quadSize, weightDST, weightDLT, weightDOR);
         return imageWarp;
     }
 

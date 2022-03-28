@@ -89,9 +89,6 @@ set (RESIZING_HEADER
     # numerical headers/sources
     ${CMAKE_SOURCE_DIR}/src/numerical/types.h
     ${CMAKE_SOURCE_DIR}/src/numerical/cg_solver.h
-    ${CMAKE_SOURCE_DIR}/src/numerical/solver.h
-    ${CMAKE_SOURCE_DIR}/src/numerical/problem.h
-    ${CMAKE_SOURCE_DIR}/src/numerical/linesearch.h
 )
 
 if(CUDA_FOUND)

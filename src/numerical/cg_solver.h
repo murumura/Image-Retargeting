@@ -1,57 +1,76 @@
 #ifndef CG_SOLVER_H
 #define CG_SOLVER_H
-#include <numerical/linesearch.h>
-#include <numerical/solver.h>
 #include <numerical/types.h>
+#include <unordered_map>
+#include <vector>
 namespace Numerical {
-    template <typename ProblemType>
-    class ConjugatedGradientDescentSolver : public Solver<ProblemType, 1> {
 
-    public:
-        using Superclass = Solver<ProblemType, 1>;
-        using typename Superclass::Scalar;
-        using typename Superclass::TVector;
-
-        /**
-         * @brief minimize
-         * @details [long description]
-         *
-         * @param objFunc [description]
-        */
-        void minimize(ProblemType& objFunc, TVector& x0)
-        {
-            TVector grad(x0.rows());
-            TVector grad_old(x0.rows());
-            TVector Si(x0.rows());
-            TVector Si_old(x0.rows());
-
-            this->m_current.reset();
-            do {
-                objFunc.gradient(x0, grad);
-
-                if (this->m_current.iterations == 0) {
-                    Si = -grad;
-                }
-                else {
-                    const double beta = grad.dot(grad) / (grad_old.dot(grad_old));
-                    Si = -grad + beta * Si_old;
-                }
-
-                const double rate = Armijo<ProblemType, 1>::linesearch(x0, Si, objFunc);
-
-                x0 = x0 + rate * Si;
-
-                grad_old = grad;
-                Si_old = Si;
-
-                this->m_current.gradNorm = grad.template lpNorm<Eigen::Infinity>();
-                // std::cout << "iter: "<<iter<< " f = " <<  objFunc.value(x0) << " ||g||_inf "<<gradNorm   << std::endl;
-                ++this->m_current.iterations;
-                this->m_status = checkConvergence(this->m_stop, this->m_current);
-            } while (objFunc.callback(this->m_current, x0) && (this->m_status == Status::Continue));
-        }
+    enum class SolverStatus {
+        NotStarted = -1,
+        Continue = 0,
+        RhsStable = 1,
+        IterationLimit,
+        XDeltaTolerance,
+        FDeltaTolerance,
+        GradNormTolerance,
+        Condition,
+        UserDefined
     };
 
+    template <typename MatrixType, typename Rhs, typename Dest>
+    void lscgSolve(const MatrixType& mat, const Rhs& rhs, Dest& x, Eigen::Index& iters,
+        typename Dest::RealScalar& tol_error)
+    {
+        Eigen::LeastSquaresConjugateGradient<MatrixType> lscg;
+        lscg.setMaxIterations(iters);
+        lscg.setTolerance(tol_error);
+        lscg.compute(mat);
+        x = lscg.solveWithGuess(rhs, x);
+        tol_error = lscg.tolerance();
+        iters = lscg.iterations();
+    }
+
+    class CGSolver {
+    public:
+        CGSolver(int rows, int cols)
+            : status{SolverStatus::NotStarted}, rows(rows), cols(cols)
+        {
+        }
+
+        void addSysElement(int row, int col, double value)
+        {
+            tripletList.push_back(Eigen::Triplet<double>{row, col, value});
+            status = SolverStatus::Continue;
+        }
+
+        void setStatus(SolverStatus status_)
+        {
+            status = status_;
+        }
+
+        template <typename Dest, typename Rhs>
+        void solve(Dest& x, const Rhs& rhs, const int maxIters = 50000)
+        {
+            if (status != SolverStatus::RhsStable)
+                throw std::runtime_error("Need to fill right handside");
+            // build linear system
+            Eigen::SparseMatrix<double> A;
+            A.resize(rows, cols);
+            A.setFromTriplets(tripletList.begin(), tripletList.end());
+            double tol_error = Eigen::NumTraits<double>::epsilon();
+            Eigen::Index iters = maxIters;
+            lscgSolve(A, rhs, x, iters, tol_error);
+            std::cout << "#iterations:     " << iters << std::endl;
+            std::cout << "estimated error: " << tol_error << std::endl;
+            setStatus(SolverStatus::NotStarted);
+        }
+
+    private:
+        Eigen::VectorXd b;
+        int rows, cols;
+        std::vector<Eigen::Triplet<double>> tripletList;
+        SolverStatus status;
+    };
 } // namespace Numerical
 
 #endif
