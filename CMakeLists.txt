@@ -83,6 +83,7 @@ set (RESIZING_HEADER
     ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.h
     ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.cpp
     ${CMAKE_SOURCE_DIR}/src/image/resizing_op.h
+    ${CMAKE_SOURCE_DIR}/src/image/perspective_transform_op.h
     # geometry header/sources
     ${CMAKE_SOURCE_DIR}/src/geometry/common.h
     ${CMAKE_SOURCE_DIR}/src/geometry/quad_mesh.h

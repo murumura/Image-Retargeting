@@ -1,11 +1,13 @@
 #ifndef WRAPPING_H
 #define WRAPPING_H
+#include <cmath>
 #include <geometry/quad_mesh.h>
 #include <image/image.h>
 #include <image/utils.h>
 #include <iostream>
 #include <list>
 #include <numerical/cg_solver.h>
+#include <image/perspective_transform_op.h>
 #include <vector>
 namespace Image {
     const int r = 0;
@@ -46,10 +48,9 @@ namespace Image {
             patchColor = patchColor_;
         }
 
-        void setPatchMesh(const std::vector<Eigen::Vector2f>& vertices_uv,
-            const std::vector<std::pair<Geometry::LocationType, Geometry::LocationType>>& loc_types)
+        void setPatchMesh(const std::vector<Eigen::Vector2f>& vertices_uv)
         {
-            patchMesh = std::make_shared<Geometry::PatchMesh>(vertices_uv, loc_types);
+            patchMesh = std::make_shared<Geometry::PatchMesh>(vertices_uv);
             computeCentroid();
             computeReprEdge();
         }
@@ -79,8 +80,9 @@ namespace Image {
     };
 
     struct CachedCoordMapping {
-        Eigen::Vector2i pixel_coord;
-        int patch_index; // corresponding patch index of stored segment Id
+        Eigen::Vector2i pixel_coord; ///< pixel coordinate of each quad vertices in serialized form
+        int patch_index; ///< corresponding patch index of stored segment Id
+        Eigen::Vector2i deformed_uv_coord; ///< deformed uv coordinate
     };
 
     class Wrapping {
@@ -133,21 +135,6 @@ namespace Image {
                 }
 
             std::vector<std::vector<Eigen::Vector2f>> vertices_uvs(patches.size());
-            std::vector<std::vector<std::pair<Geometry::LocationType, Geometry::LocationType>>> vertices_locs(patches.size());
-
-            std::function<std::pair<Geometry::LocationType, Geometry::LocationType>(int, int)> locationType = [&](int row, int col) {
-                Geometry::LocationType typeY{Geometry::LocationType::Regular}, typeX{Geometry::LocationType::Regular};
-                // precache boundary conditions for later constraint
-                if (row == 0)
-                    typeY = Geometry::LocationType::TopBoundary;
-                else if (row == meshRows - 1)
-                    typeY = Geometry::LocationType::BottomBoundary;
-                if (col == 0)
-                    typeX = Geometry::LocationType::LeftBoundary;
-                else if (col == meshCols - 1)
-                    typeX = Geometry::LocationType::RightBoundary;
-                return std::make_pair(typeY, typeX);
-            };
 
             for (int row = 0; row < meshRows - 1; row++)
                 for (int col = 0; col < meshCols - 1; col++) {
@@ -174,10 +161,6 @@ namespace Image {
                         std::tie(r1, c1) = uv_mapping[i];
                         std::tie(r2, c2) = uv_mapping[(i + 1) == 4 ? 0 : (i + 1)];
                         vertices_uvs[pidx1].insert(vertices_uvs[pidx1].end(), {Eigen::Vector2f{r1, c1}, Eigen::Vector2f{r2, c2}});
-                        vertices_locs[pidx1].insert(vertices_locs[pidx1].end(), {
-                                                                                    locationType(r1, c1),
-                                                                                    locationType(r2, c2),
-                                                                                });
                     }
                     nQuads++;
                 }
@@ -189,7 +172,7 @@ namespace Image {
 
             // Maintain edge list of each patch
             for (int i = 0; i < patches.size(); i++)
-                patches[i].setPatchMesh(vertices_uvs[i], vertices_locs[i]);
+                patches[i].setPatchMesh(vertices_uvs[i]);
         }
 
         template <typename T>
@@ -352,7 +335,7 @@ namespace Image {
                 int right_bound_vy = row * meshCols + meshCols - 1 + nVertices;
 
                 solver.addSysElement(rowIdx++, left_bound_vx, HARD_CONSTRAINT);
-                rhs(rhsRowIdx++) = 1e-2;
+                rhs(rhsRowIdx++) = 1e-12;
 
                 solver.addSysElement(rowIdx++, right_bound_vx, HARD_CONSTRAINT);
                 rhs(rhsRowIdx++) = HARD_CONSTRAINT * (targetWidth - 1);
@@ -365,7 +348,7 @@ namespace Image {
                 int bottom_bound_vy = col * meshRows + meshRows - 1 + nVertices;
 
                 solver.addSysElement(rowIdx++, top_bound_vy, HARD_CONSTRAINT);
-                rhs(rhsRowIdx++) = 1e-2;
+                rhs(rhsRowIdx++) = 1e-12;
 
                 solver.addSysElement(rowIdx++, bottom_bound_vy, HARD_CONSTRAINT);
                 rhs(rhsRowIdx++) = HARD_CONSTRAINT * (targetHeight - 1);
@@ -374,8 +357,34 @@ namespace Image {
             solver.setStatus(Numerical::SolverStatus::RhsStable);
             Eigen::VectorXd Vp(columns); ///< deformed vertices to be solved
             solver.solve(Vp, rhs);
-            //std::cout << Vp << std::endl;
+            std::cout << Vp << std::endl;
             // Record deformed vertice cooridinate
+            for (int row = 0; row < meshRows; row++)
+                for (int col = 0; col < meshCols; col++) {
+                    int index = row * meshCols + col;
+                    cache_mappings[index].deformed_uv_coord(0) = std::round(Vp(index));
+                    cache_mappings[index].deformed_uv_coord(1) = std::round(Vp(index + nVertices));
+                }
+        }
+
+        template <typename T>
+        void wrapEachQuad(Eigen::Tensor<T, 3, Eigen::RowMajor>& resizedImage)
+        {
+            ImageProjectiveTransformOp<double> transformOp{"nearest", "reflect"};
+            for (int row = 0; row < meshRows - 1; row++) {
+                for (int col = 0; col < meshCols - 1; col++) {
+                    int vertices = row * meshCols + col;
+                    //iterate in CCW order
+                    const int vax = vertices;
+                    const int vay = vertices + nVertices;
+                    const int vbx = vertices + meshCols;
+                    const int vby = vertices + meshCols + nVertices;
+                    const int vcx = vertices + meshCols + 1;
+                    const int vcy = vertices + meshCols + 1 + nVertices;
+                    const int vdx = vertices + 1;
+                    const int vdy = vertices + 1 + nVertices;
+                }
+            }
         }
 
         template <typename T>
@@ -398,6 +407,7 @@ namespace Image {
             // Plot quad mesh upon original image
             drawMeshGrid<T>(input, "InputGrid", patches);
 
+            // Solve constraint for later resizing
             buildAndSolveConstraint(patches, origH, origW);
         }
 

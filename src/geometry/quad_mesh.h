@@ -6,27 +6,16 @@
 #include <iostream>
 namespace Geometry {
 
-    enum class LocationType {
-        TopBoundary,
-        BottomBoundary,
-        LeftBoundary,
-        RightBoundary,
-        Regular
-    };
-
     struct MeshVert {
-        MeshVert() : uv{-1.0, -1.0}, locType{LocationType::Regular, LocationType::Regular} {}
+        MeshVert() : uv{-1.0, -1.0} {}
 
-        MeshVert(const Eigen::Vector2f& uv_,
-            const LocationType& u_loc = LocationType::Regular, const LocationType& v_loc = LocationType::Regular)
-            : uv{uv_}, locType{u_loc, v_loc} {}
+        MeshVert(const Eigen::Vector2f& uv_)
+            : uv{uv_} {}
 
-        MeshVert(const float u, const float v,
-            const LocationType& u_loc = LocationType::Regular, const LocationType& v_loc = LocationType::Regular)
-            : uv{u, v}, locType{u_loc, v_loc} {}
+        MeshVert(const float u, const float v)
+            : uv{u, v} {}
 
         Eigen::Vector2f uv;
-        std::pair<LocationType, LocationType> locType;
 
         bool operator==(const MeshVert& other)
         {
@@ -94,16 +83,15 @@ namespace Geometry {
     class PatchMesh {
     public:
         PatchMesh(
-            const std::vector<Eigen::Vector2f>& vertices_uv,
-            const std::vector<std::pair<LocationType, LocationType>>& loc_types)
+            const std::vector<Eigen::Vector2f>& vertices_uv)
         {
             nEdges = vertices_uv.size() / 2;
             constexpr int offset = 2;
             for (int i = 0; i < vertices_uv.size(); i += offset) {
                 edges.emplace_back(
                     std::make_shared<MeshEdge>(
-                        std::make_shared<MeshVert>(vertices_uv[i], loc_types[i].first, loc_types[i].second), ///< v0
-                        std::make_shared<MeshVert>(vertices_uv[i + 1], loc_types[i + 1].first, loc_types[i + 1].second) ///< v1
+                        std::make_shared<MeshVert>(vertices_uv[i]), ///< v0
+                        std::make_shared<MeshVert>(vertices_uv[i + 1]) ///< v1
                         ));
             }
             computeCentroid();
