@@ -20,13 +20,13 @@ int main(int argc, const char* argv[])
         int ScaleU{6};
         bool SaveSaliency{true};
         bool SaveScaledSaliency{true};
-        int newH{400};
+        int newH{300};
         int newW{400};
         float Alpha{0.8f};
-        int QuadSize{10};
-        float WeightDST{1.0f};
-        float WeightDLT{1.0f};
-        float WeightDOR{10.0f};
+        int QuadSize{50};
+        float WeightDST{5.5f};
+        float WeightDLT{0.8f};
+        float WeightDOR{20.0f};
     };
 
     auto parser = CommndLineParser<myOpts>::create({{"--InputImage", &myOpts::InputImage, "Input image location"},

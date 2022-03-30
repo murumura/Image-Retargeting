@@ -2,8 +2,10 @@
 #include <gtest/gtest.h>
 #include <image/colorspace_op.h>
 #include <image/filter.h>
+#include <image/homography.h>
 #include <image/image.h>
 #include <image/imageIO.h>
+#include <image/perspective_transform_op.h>
 #include <image/resizing_op.h>
 #include <iostream>
 using namespace Image;
@@ -144,9 +146,50 @@ TEST(Image, rgb_to_xyz)
     Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> lenaRGB = loadPNG<uint8_t>("./test/test_image/lena256.png", 3);
     Eigen::Tensor<float, 3, Eigen::RowMajor> lenaXYZ;
     Image::Functor::RGBToXYZ<float>()(lenaRGB.cast<float>(), lenaXYZ);
-
     savePNG<uint8_t, 3>("./lenaXYZ", lenaXYZ.cast<uint8_t>());
     EXPECT_EQ(0, remove("./lenaXYZ.png"));
+}
+
+TEST(Image, wrapping_image)
+{
+    ImageProjectiveTransformOp<float> transformOp{"nearest", "reflect"};
+    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> RGB = loadPNG<uint8_t>("./test/test_image/blur.png", 3);
+    Eigen::Tensor<float, 3, Eigen::RowMajor> transformedRGB(RGB.dimension(0), RGB.dimension(1), RGB.dimension(2));
+    Eigen::Matrix3f H;
+    H << 1.0, 1.0, -250, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0;
+    std::cout << H << std::endl;
+    Eigen::Tensor<float, 1, Eigen::RowMajor> trans_row = perspectiveMatrixToflatTensor<float>(H);
+    transformOp(RGB.cast<float>(), transformedRGB, trans_row);
+    Image::savePNG<uint8_t, 3>("./transformed", transformedRGB.cast<uint8_t>());
+    EXPECT_EQ(0, remove("./transformed.png"));
+}
+
+TEST(Image, homography)
+{
+    ImageProjectiveTransformOp<float> transformOp{"nearest", "constant"};
+    Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> RGB = loadPNG<uint8_t>("./test/test_image/panda.png", 3);
+    Eigen::Tensor<float, 3, Eigen::RowMajor> transformedRGB(RGB.dimension(0), RGB.dimension(1), RGB.dimension(2));
+
+    std::array<Eigen::Vector2f, 4> uvSrc = {
+        Eigen::Vector2f{10, 10}, // top-left corner
+        Eigen::Vector2f{210, 10}, // botton-left corner
+        Eigen::Vector2f{210, 210}, // botton-right corner
+        Eigen::Vector2f{10, 210} // top-right corner
+    };
+
+    std::array<Eigen::Vector2f, 4> uvDst = {
+        Eigen::Vector2f{50, 50}, // top-left corner
+        Eigen::Vector2f{210, 10}, // botton-left corner
+        Eigen::Vector2f{210, 110}, // botton-right corner
+        Eigen::Vector2f{10, 210} // top-right corner
+    };
+
+    Eigen::Matrix3f H = findHomography<SystemSolverMethode::PARTIAL_PIV_LU>(
+        uvSrc, uvDst);
+    Eigen::Tensor<float, 1, Eigen::RowMajor> trans_row = perspectiveMatrixToflatTensor<float>(H);
+    transformOp(RGB.cast<float>(), transformedRGB, trans_row);
+    Image::savePNG<uint8_t, 3>("./transformed", transformedRGB.cast<uint8_t>());
+    EXPECT_EQ(0, remove("./transformed.png"));
 }
 
 TEST(Image, rgb_to_cie)

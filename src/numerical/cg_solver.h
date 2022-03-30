@@ -49,7 +49,7 @@ namespace Numerical {
         }
 
         template <typename Dest, typename Rhs>
-        void solve(Dest& x, const Rhs& rhs, const int maxIters = 50000)
+        void solve(Dest& x, const Rhs& rhs, const int maxIters = 5000)
         {
             if (status != SolverStatus::RhsStable)
                 throw std::runtime_error("Need to fill right handside");

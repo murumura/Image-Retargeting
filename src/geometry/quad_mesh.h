@@ -7,19 +7,20 @@
 namespace Geometry {
 
     struct MeshVert {
-        MeshVert() : uv{-1.0, -1.0} {}
+        MeshVert() : uv{-1.0, -1.0}, index{-1} {}
 
-        MeshVert(const Eigen::Vector2f& uv_)
-            : uv{uv_} {}
+        MeshVert(const Eigen::Vector2f& uv_, const int index_)
+            : uv{uv_}, index{index_} {}
 
-        MeshVert(const float u, const float v)
-            : uv{u, v} {}
+        MeshVert(const float u, const float v, const int index_)
+            : uv{u, v}, index{index_} {}
 
-        Eigen::Vector2f uv;
+        Eigen::Vector2f uv; ///< u for row index and v for column index in pixel coordinates
+        int index; ///< vertex index for mapping
 
         bool operator==(const MeshVert& other)
         {
-            return this->uv == other.uv;
+            return this->uv == other.uv && this->index == other.index;
         }
 
         bool operator!=(const MeshVert& other)
@@ -55,11 +56,11 @@ namespace Geometry {
             return (*v[0].get() == v1 && *v[1].get() == v2) || (*v[0].get() == v2 && *v[1].get() == v1);
         }
 
-        Eigen::Vector2i deserialize(const int meshCols)
+        Eigen::Vector2i deserialize()
         {
-            int v1Index = v[0]->uv(0) * meshCols + v[0]->uv(1);
-            int v2Index = v[1]->uv(0) * meshCols + v[1]->uv(1);
-            return {v1Index, v2Index};
+            int v0Index = v[0]->index;
+            int v1Index = v[1]->index;
+            return {v0Index, v1Index};
         }
 
         void computeCentroid()
@@ -83,15 +84,15 @@ namespace Geometry {
     class PatchMesh {
     public:
         PatchMesh(
-            const std::vector<Eigen::Vector2f>& vertices_uv)
+            const std::vector<Eigen::Vector2f>& vertices_uv, const std::vector<int>& indices)
         {
             nEdges = vertices_uv.size() / 2;
             constexpr int offset = 2;
             for (int i = 0; i < vertices_uv.size(); i += offset) {
                 edges.emplace_back(
                     std::make_shared<MeshEdge>(
-                        std::make_shared<MeshVert>(vertices_uv[i]), ///< v0
-                        std::make_shared<MeshVert>(vertices_uv[i + 1]) ///< v1
+                        std::make_shared<MeshVert>(vertices_uv[i], indices[i]), ///< v0
+                        std::make_shared<MeshVert>(vertices_uv[i + 1], indices[i + 1]) ///< v1
                         ));
             }
             computeCentroid();
@@ -120,7 +121,7 @@ namespace Geometry {
                 centroid += (edges[i]->centroid / nEdges);
         }
 
-        void drawOnCanvas(Eigen::Tensor<float, 3, Eigen::RowMajor>& canvas, float quadHeight, float quadWidth)
+        void drawOnCanvas(Eigen::Tensor<float, 3, Eigen::RowMajor>& canvas)
         {
             const int C = canvas.dimension(2);
             const int H = canvas.dimension(0);
@@ -130,10 +131,10 @@ namespace Geometry {
                 Eigen::Vector2f v_l = edges[i]->v[0]->uv;
                 Eigen::Vector2f v_r = edges[i]->v[1]->uv;
 
-                int r1 = v_l(0) * quadHeight;
-                int c1 = v_l(1) * quadWidth;
-                int r2 = v_r(0) * quadHeight;
-                int c2 = v_r(1) * quadWidth;
+                int r1 = v_l(0);
+                int c1 = v_l(1);
+                int r2 = v_r(0);
+                int c2 = v_r(1);
                 r1 = std::min(r1, H - 1);
                 c1 = std::min(c1, W - 1);
                 r2 = std::min(r2, H - 1);
