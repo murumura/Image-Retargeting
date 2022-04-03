@@ -357,7 +357,7 @@ namespace Image {
                 }
             }
 
-            constexpr double HARD_CONSTRAINT = 100.0;
+            constexpr double HARD_CONSTRAINT = 300.0;
             // Set up grid orientation constraint
             // DOR & Avoid vertices flipping
             for (int row = 0; row < meshRows - 1; row++) {
@@ -425,8 +425,8 @@ namespace Image {
             solver.solveWithGuess(Vp, rhs);
             // Record deformed vertice cooridinate
             for (int v = 0; v < nVertices; v++) {
-                cache_mappings[v].deformed_uv_coord(1) = std::min((int)std::nearbyint(std::abs(Vp(v))), (int)targetWidth - 1); //column
-                cache_mappings[v].deformed_uv_coord(0) = std::min((int)std::nearbyint(std::abs(Vp(v + nVertices))), (int)targetHeight - 1); // row
+                cache_mappings[v].deformed_uv_coord(1) = std::min((int)std::ceil(std::abs(Vp(v))), (int)targetWidth - 1); //column
+                cache_mappings[v].deformed_uv_coord(0) = std::min((int)std::ceil(std::abs(Vp(v + nVertices))), (int)targetHeight - 1); // row
             }
 
             drawDeformedMeshGrid("deformed");
@@ -442,7 +442,9 @@ namespace Image {
             const int origH = inputFloat.dimension(0);
             const int origW = inputFloat.dimension(1);
             Eigen::Tensor<float, 3, Eigen::RowMajor> blackTemplate(targetHeight, targetWidth, 3);
+            Eigen::Tensor<bool, 3, Eigen::RowMajor> coverage(targetHeight, targetWidth, 3);
             resizedImage.setConstant(0.0);
+            coverage.setConstant(false);
             // iterate each quad and apply transform
             for (int row = 0; row < meshRows - 1; row++) {
                 for (int col = 0; col < meshCols - 1; col++) {
@@ -472,15 +474,20 @@ namespace Image {
                     // paste quad region to one canvas then perform warpping to another
                     transformOp(inputFloat, blackTemplate, trans, 0.0);
 
-                    int d_row_l = cache_mappings[v_tl].deformed_uv_coord(0);
-                    int d_col_l = cache_mappings[v_tl].deformed_uv_coord(1);
-                    int d_col_r = cache_mappings[v_tr].deformed_uv_coord(1);
-                    int d_row_r = cache_mappings[v_bl].deformed_uv_coord(0);
+                    int d_row_l = std::min((int)cache_mappings[v_tl].deformed_uv_coord(0), (int)cache_mappings[v_tr].deformed_uv_coord(0));
+                    int d_col_l = std::min((int)cache_mappings[v_tl].deformed_uv_coord(1), (int)cache_mappings[v_bl].deformed_uv_coord(1));
+                    int d_col_r = std::max((int)cache_mappings[v_br].deformed_uv_coord(1), (int)cache_mappings[v_tr].deformed_uv_coord(1));
+                    int d_row_r = std::max((int)cache_mappings[v_br].deformed_uv_coord(0), (int)cache_mappings[v_bl].deformed_uv_coord(0));
+                    int delta_row = std::max(0, d_row_r - d_row_l + 1);
+                    int delta_col = std::max(0, d_col_r - d_col_l + 1);
                     Eigen::array<int, 3> d_offset = {d_row_l, d_col_l, 0};
-                    Eigen::array<int, 3> d_extent = {d_row_r - d_row_l + 1, d_col_r - d_col_l + 1, 3};
+                    Eigen::array<int, 3> d_extent = {delta_row, delta_col, 3};
                     resizedImage.slice(d_offset, d_extent) = blackTemplate.slice(d_offset, d_extent);
+                    coverage.slice(d_offset, d_extent) = coverage.slice(d_offset, d_extent).setConstant(true).eval();
                 }
             }
+            // post-processing to fill holes, this is mostly due to extreme deformed pixel cooridinate
+            std::cout << coverage.all() << std::endl;
         }
 
         template <typename T>

@@ -73,7 +73,7 @@ Make sure Eigen3 can be found by your build system.
 ## Install CUDA Toolkit
 Download and install the CUDA Toolkit (11.4 on my computer) for your corresponding platform. For system requirements and installation instructions of cuda toolkit, please refer to the [Linux Installation Guide](https://docs.nvidia.com/cuda/cuda-installation-guide-linux/), and the [Windows Installation Guide](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html).
 
-Make sure the environment variable CUDA_PATH is set to the CUDA Toolkit install directory.
+Make sure the environment variable `CUDA_PATH` is set to the CUDA Toolkit install directory.
 
 Also Make sure NVCC and cuda-toolkit can be found by your build system.
 
@@ -99,3 +99,6 @@ original-grid                       |  200 x 500                                
 :-------------------------:         |:-------------------------:|                :-------------------------:
 ![](./results/input-grid-girl.png)  |  ![](./results/result-girl-200-500.png) | ![](./results/result-girl-300-200.png)
 ![](./results/input-grid-butterfly.png)  |  ![](./results/result-butterfly-200-500.png) | ![](./results/result-butterfly-300-200.png)
+
+# Acknowledgement
+Thank [zyu-tien](https://github.com/zyu-tien) for helping me debugging and giving me helpful advices while developing this project.
