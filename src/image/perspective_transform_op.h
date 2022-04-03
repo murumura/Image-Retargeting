@@ -268,9 +268,6 @@ namespace Image {
             Eigen::Tensor<T, 3, Eigen::RowMajor>& output,
             const TransformsType& transform, const T fill_value = 0)
         {
-            const int out_height = output.dimension(0);
-            const int out_width = output.dimension(1);
-            const int out_channel = output.dimension(2);
             assert(transform.size() == 8 || transform.size() == 9);
             switch (fill_mode) {
             case Mode::FILL_REFLECT:

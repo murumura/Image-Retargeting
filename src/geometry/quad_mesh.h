@@ -99,7 +99,7 @@ namespace Geometry {
         }
 
         [[nodiscard]] std::shared_ptr<MeshEdge>
-        getCentralEdge()
+        getCentralEdge() const
         {
             float minDist = 2e5;
             int minIdx = 0;

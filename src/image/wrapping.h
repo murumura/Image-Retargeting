@@ -81,7 +81,7 @@ namespace Image {
     };
 
     struct CachedCoordMapping {
-        Eigen::Vector2i pixel_coord; ///< pixel coordinate of each quad vertices in serialized form
+        Eigen::Vector2f pixel_coord; ///< pixel coordinate of each quad vertices in serialized form
         int patch_index; ///< corresponding patch index of stored segment Id
         Eigen::Vector2f deformed_uv_coord; ///< deformed uv coordinate
     };
@@ -117,10 +117,8 @@ namespace Image {
 
             quadWidth = (float)(origW) / (meshCols - 1);
             quadHeight = (float)(origH) / (meshRows - 1);
-            deformedQuadWidth = (float)(targetWidth) / (meshCols - 1);
-            deformedQuadHeight = (float)(targetHeight) / (meshRows - 1);
 
-            std::function<Eigen::Vector2i(int, int)> coordTransform = [&](int mesh_row, int mesh_col) {
+            std::function<Eigen::Vector2f(int, int)> coordTransform = [&](int mesh_row, int mesh_col) {
                 int pixel_row = mesh_row * quadHeight;
                 int pixel_col = mesh_col * quadWidth;
                 // boundary case
@@ -130,7 +128,7 @@ namespace Image {
                     pixel_row--;
                 pixel_row = std::min(pixel_row, origH - 1);
                 pixel_col = std::min(pixel_col, origW - 1);
-                return Eigen::Vector2i{std::max(pixel_row, 0), std::max(pixel_col, 0)};
+                return Eigen::Vector2f{std::max(pixel_row, 0), std::max(pixel_col, 0)};
             };
 
             std::function<int(int)> findPatchIndex = [&](int segId) {
@@ -216,19 +214,29 @@ namespace Image {
 
         void drawDeformedMeshGrid(const std::string filename)
         {
-            Eigen::Tensor<float, 3, Eigen::RowMajor> C(targetHeight, targetWidth, 1);
-            C.setZero();
-            for (int row = 0; row < meshRows; row++) {
-                for (int col = 0; col < meshCols; col++) {
-                    int v = row * meshCols + col;
-                    int r = cache_mappings[v].deformed_uv_coord(0);
-                    int c = cache_mappings[v].deformed_uv_coord(1);
-                    r = std::min(r, (int)targetHeight - 1);
-                    c = std::min(r, (int)targetWidth - 1);
-                    C(r, c, 0) = 255.0;
+            Eigen::Tensor<float, 3, Eigen::RowMajor> canvas(targetHeight, targetWidth, 1);
+            canvas.setZero();
+            for (int mesh_row = 0; mesh_row < meshRows - 1; mesh_row++)
+                for (int mesh_col = 0; mesh_col < meshCols - 1; mesh_col++) {
+                    int v = mesh_row * meshCols + mesh_col;
+
+                    // iterate vertices of each quad in CCW order
+                    std::array<int, 4> quad_indices = {
+                        v, // top-left corner
+                        v + meshCols, // botton-left corner
+                        v + meshCols + 1, // botton-right corner
+                        v + 1 // top-right corner
+                    };
+
+                    for (int i = 0; i < 4; i++) {
+                        const int r1 = std::min((int)std::ceil(cache_mappings[quad_indices[i]].deformed_uv_coord(0)), (int)targetHeight - 1);
+                        const int c1 = std::min((int)std::ceil(cache_mappings[quad_indices[i]].deformed_uv_coord(1)), (int)targetWidth - 1);
+                        const int r2 = std::min((int)std::ceil(cache_mappings[quad_indices[(i + 1) == 4 ? 0 : (i + 1)]].deformed_uv_coord(0)), (int)targetHeight - 1);
+                        const int c2 = std::min((int)std::ceil(cache_mappings[quad_indices[(i + 1) == 4 ? 0 : (i + 1)]].deformed_uv_coord(1)), (int)targetWidth - 1);
+                        drawLine<float>(canvas, r1, c1, r2, c2);
+                    }
                 }
-            }
-            savePNG<uint8_t, 3>(filename, C.cast<uint8_t>());
+            savePNG<uint8_t, 3>(filename, canvas.cast<uint8_t>());
         }
 
         void buildAndSolveConstraint(std::vector<Image::Patch>& patches, int origH, int origW)
@@ -248,6 +256,10 @@ namespace Image {
             int rhsRowIdx = 0;
             Eigen::VectorXd rhs(rows);
 
+            std::cout << "Weight DST:" << weightDST << std::endl;
+            std::cout << "Weight DLT:" << weightDLT << std::endl;
+            std::cout << "Weight DOR:" << weightDOR << std::endl;
+
             for (int i = 0; i < patches.size(); i++) {
                 float s_i = patches[i].saliencyValue;
                 const std::vector<std::shared_ptr<Geometry::MeshEdge>> edgesList = patches[i].patchMesh->edges;
@@ -255,9 +267,17 @@ namespace Image {
                     continue;
 
                 const std::shared_ptr<Geometry::MeshEdge> repr_edge = patches[i].reprEdge;
+
+                // get serialized vertex indices of each end
+                const Eigen::Vector2i reprvIndices = repr_edge->deserialize();
+                const int c1X = reprvIndices(0);
+                const int c1Y = reprvIndices(0) + nVertices;
+                const int c2X = reprvIndices(1);
+                const int c2Y = reprvIndices(1) + nVertices;
+
                 // c = (Cx, Cy) ,Cx = v1x -v2x, Cy = v1y - v2y
-                float cx = repr_edge->v[1]->uv(1) - repr_edge->v[0]->uv(1);
-                float cy = repr_edge->v[1]->uv(0) - repr_edge->v[0]->uv(0);
+                float cx = repr_edge->v[0]->uv(1) - repr_edge->v[1]->uv(1);
+                float cy = repr_edge->v[0]->uv(0) - repr_edge->v[1]->uv(0);
 
                 Eigen::Matrix2f M;
                 M << cx + eps, cy + eps,
@@ -270,28 +290,23 @@ namespace Image {
                 else
                     M_inv = M.completeOrthogonalDecomposition().pseudoInverse();
 
-                // get serialized vertex indices of each end
-                const Eigen::Vector2i reprvIndices = repr_edge->deserialize();
-                const int c1X = reprvIndices(0);
-                const int c1Y = reprvIndices(0) + nVertices;
-                const int c2X = reprvIndices(1);
-                const int c2Y = reprvIndices(1) + nVertices;
-
                 for (int j = 0; j < edgesList.size(); j++) {
-                    float ex = edgesList[j]->v[1]->uv(1) - edgesList[j]->v[0]->uv(1);
-                    float ey = edgesList[j]->v[1]->uv(0) - edgesList[j]->v[0]->uv(0);
-
-                    // e = (ex, ey) so we need to flip it
-                    const Eigen::Vector2f e{ex, ey};
-                    const Eigen::Vector2f s_r = M_inv * e;
-                    const float s = s_r(0);
-                    const float r = s_r(1);
 
                     const Eigen::Vector2i vIndices = edgesList[j]->deserialize();
                     const int vaX = vIndices(0);
                     const int vaY = vIndices(0) + nVertices;
                     const int vbX = vIndices(1);
                     const int vbY = vIndices(1) + nVertices;
+
+                    float ex = edgesList[j]->v[0]->uv(1) - edgesList[j]->v[1]->uv(1);
+                    float ey = edgesList[j]->v[0]->uv(0) - edgesList[j]->v[1]->uv(0);
+
+                    // e = (ex, ey) so we need to flip it
+                    const Eigen::Vector2f e{ex, ey};
+
+                    const Eigen::Vector2f s_r = M_inv * e;
+                    const float s = s_r(0);
+                    const float r = s_r(1);
 
                     /*-- Set up patch transformation constraint --*/
                     /*---DST---*/
@@ -302,7 +317,7 @@ namespace Image {
                     solver.addSysElement(rowIdx, c2X, alpha * s_i * s * weightDST);
                     solver.addSysElement(rowIdx, c1Y, -alpha * s_i * r * weightDST);
                     solver.addSysElement(rowIdx, c2Y, alpha * s_i * r * weightDST);
-                    rhs(rhsRowIdx) = 1e-6;
+                    rhs(rhsRowIdx) = 0;
                     rowIdx++;
                     rhsRowIdx++;
 
@@ -313,7 +328,7 @@ namespace Image {
                     solver.addSysElement(rowIdx, c2X, -alpha * s_i * r * weightDST);
                     solver.addSysElement(rowIdx, c1Y, -alpha * s_i * s * weightDST);
                     solver.addSysElement(rowIdx, c2Y, alpha * s_i * s * weightDST);
-                    rhs(rhsRowIdx) = 1e-6;
+                    rhs(rhsRowIdx) = 0;
                     rowIdx++;
                     rhsRowIdx++;
 
@@ -325,7 +340,7 @@ namespace Image {
                     solver.addSysElement(rowIdx, c2X, high_ratio * (1 - alpha) * (1 - s_i) * s * weightDLT);
                     solver.addSysElement(rowIdx, c1Y, -high_ratio * (1 - alpha) * (1 - s_i) * r * weightDLT);
                     solver.addSysElement(rowIdx, c2Y, high_ratio * (1 - alpha) * (1 - s_i) * r * weightDLT);
-                    rhs(rhsRowIdx) = 1e-6;
+                    rhs(rhsRowIdx) = 0;
                     rowIdx++;
                     rhsRowIdx++;
 
@@ -336,14 +351,15 @@ namespace Image {
                     solver.addSysElement(rowIdx, c2X, -width_ratio * (1 - alpha) * (1 - s_i) * r * weightDLT);
                     solver.addSysElement(rowIdx, c1Y, -width_ratio * (1 - alpha) * (1 - s_i) * s * weightDLT);
                     solver.addSysElement(rowIdx, c2Y, width_ratio * (1 - alpha) * (1 - s_i) * s * weightDLT);
-                    rhs(rhsRowIdx) = 1e-6;
+                    rhs(rhsRowIdx) = 0;
                     rowIdx++;
                     rhsRowIdx++;
                 }
             }
 
+            constexpr double HARD_CONSTRAINT = 100.0;
             // Set up grid orientation constraint
-            // DOR
+            // DOR & Avoid vertices flipping
             for (int row = 0; row < meshRows - 1; row++) {
                 for (int col = 0; col < meshCols - 1; col++) {
                     int vertices = row * meshCols + col;
@@ -358,20 +374,18 @@ namespace Image {
                     const int vdy = vertices + 1 + nVertices;
                     solver.addSysElement(rowIdx, vay, weightDOR);
                     solver.addSysElement(rowIdx++, vby, -weightDOR);
-                    rhs(rhsRowIdx++) = 1e-6;
+                    rhs(rhsRowIdx++) = 0;
                     solver.addSysElement(rowIdx, vdy, weightDOR);
                     solver.addSysElement(rowIdx++, vcy, -weightDOR);
-                    rhs(rhsRowIdx++) = 1e-6;
+                    rhs(rhsRowIdx++) = 0;
                     solver.addSysElement(rowIdx, vax, weightDOR);
                     solver.addSysElement(rowIdx++, vdx, -weightDOR);
-                    rhs(rhsRowIdx++) = 1e-6;
+                    rhs(rhsRowIdx++) = 0;
                     solver.addSysElement(rowIdx, vbx, weightDOR);
                     solver.addSysElement(rowIdx++, vcx, -weightDOR);
-                    rhs(rhsRowIdx++) = 1e-6;
+                    rhs(rhsRowIdx++) = 0;
                 }
             }
-
-            constexpr double HARD_CONSTRAINT = 100.0;
 
             /*-- Set up boundary condition --*/
             // X boundary
@@ -380,12 +394,12 @@ namespace Image {
                 int right_bound_vx = row * meshCols + meshCols - 1;
 
                 solver.addSysElement(rowIdx++, left_bound_vx, HARD_CONSTRAINT);
-                rhs(rhsRowIdx++) = HARD_CONSTRAINT * 0;
+                rhs(rhsRowIdx++) = 0;
 
                 solver.addSysElement(rowIdx++, right_bound_vx, HARD_CONSTRAINT);
                 rhs(rhsRowIdx++) = HARD_CONSTRAINT * (targetWidth - 1);
             }
-
+            // Y boundary
             for (int col = 0; col < meshCols; col++) {
                 int top_bound_vy = col + nVertices;
                 int bottom_bound_vy = meshCols * (meshRows - 1) + col + nVertices;
@@ -399,52 +413,72 @@ namespace Image {
 
             solver.setStatus(Numerical::SolverStatus::RhsStable);
             Eigen::VectorXd Vp(columns); ///< deformed vertices to be solved
-            solver.solve(Vp, rhs);
-            //std::cout << Vp << std::endl;
-            // Record deformed vertice cooridinate
+
+            // Solve with guess by setting intial coordinate
             for (int row = 0; row < meshRows; row++)
                 for (int col = 0; col < meshCols; col++) {
-                    int index = row * meshCols + col;
-                    cache_mappings[index].deformed_uv_coord(1) = Vp(index);
-                    cache_mappings[index].deformed_uv_coord(0) = Vp(index + nVertices);
+                    int v = row * meshCols + col;
+                    Vp(v) = cache_mappings[v].pixel_coord(1);
+                    Vp(v + nVertices) = cache_mappings[v].pixel_coord(0);
                 }
+
+            solver.solveWithGuess(Vp, rhs);
+            // Record deformed vertice cooridinate
+            for (int v = 0; v < nVertices; v++) {
+                cache_mappings[v].deformed_uv_coord(1) = std::min((int)std::nearbyint(std::abs(Vp(v))), (int)targetWidth - 1); //column
+                cache_mappings[v].deformed_uv_coord(0) = std::min((int)std::nearbyint(std::abs(Vp(v + nVertices))), (int)targetHeight - 1); // row
+            }
+
             drawDeformedMeshGrid("deformed");
         }
 
         template <typename T>
         void wrapEachQuad(
             const Eigen::Tensor<T, 3, Eigen::RowMajor>& input,
-            Eigen::Tensor<T, 3, Eigen::RowMajor>& resizedImage)
+            Eigen::Tensor<float, 3, Eigen::RowMajor>& resizedImage)
         {
-            ImageProjectiveTransformOp<float> transformOp{"nearest", "reflect"};
+            ImageProjectiveTransformOp<float> transformOp{"nearest", "nearest"};
             Eigen::Tensor<float, 3, Eigen::RowMajor> inputFloat = input.template cast<float>();
+            const int origH = inputFloat.dimension(0);
+            const int origW = inputFloat.dimension(1);
+            Eigen::Tensor<float, 3, Eigen::RowMajor> blackTemplate(targetHeight, targetWidth, 3);
+            resizedImage.setConstant(0.0);
             // iterate each quad and apply transform
             for (int row = 0; row < meshRows - 1; row++) {
                 for (int col = 0; col < meshCols - 1; col++) {
-                    Eigen::Tensor<float, 3, Eigen::RowMajor> blackTemplate(targetHeight, targetWidth, 3);
                     blackTemplate.setZero();
-
                     // iterate vertices of each quad in CCW order
-                    std::array<Eigen::Vector2f, 4> uvSrc = {
-                        Eigen::Vector2f{row, col}, // top-left corner
-                        Eigen::Vector2f{row + 1, col}, // botton-left corner
-                        Eigen::Vector2f{row + 1, col + 1}, // botton-right corner
-                        Eigen::Vector2f{row, col + 1} // top-right corner
-                    };
+                    int v_tl = row * meshCols + col; // top-left corner
+                    int v_bl = row * meshCols + col + meshCols; // botton-left corner
+                    int v_br = row * meshCols + col + meshCols + 1; // botton-right corner
+                    int v_tr = row * meshCols + col + 1; // top-right corner
 
-                    int v = row * meshCols + col;
+                    // Flip coordinate to make it (x, y)
+                    std::array<Eigen::Vector2f, 4> quadUVSrc = {
+                        cache_mappings[v_tl].pixel_coord.reverse(),
+                        cache_mappings[v_bl].pixel_coord.reverse(),
+                        cache_mappings[v_br].pixel_coord.reverse(),
+                        cache_mappings[v_tr].pixel_coord.reverse()};
 
-                    std::array<Eigen::Vector2f, 4> uvDst = {
-                        cache_mappings[v].deformed_uv_coord,
-                        cache_mappings[v + meshCols].deformed_uv_coord,
-                        cache_mappings[v + meshCols + 1].deformed_uv_coord,
-                        cache_mappings[v + 1].deformed_uv_coord};
+                    std::array<Eigen::Vector2f, 4> quadUVDst = {
+                        cache_mappings[v_tl].deformed_uv_coord.reverse(),
+                        cache_mappings[v_bl].deformed_uv_coord.reverse(),
+                        cache_mappings[v_br].deformed_uv_coord.reverse(),
+                        cache_mappings[v_tr].deformed_uv_coord.reverse()};
 
-                    auto H = findHomography<SystemSolverMethode::PARTIAL_PIV_LU>(uvSrc, uvDst);
-
-                    // make sure row major
+                    Eigen::Matrix3f H = findHomography<SystemSolverMethode::PARTIAL_PIV_LU>(quadUVDst, quadUVSrc);
                     Eigen::Tensor<float, 1, Eigen::RowMajor> trans = perspectiveMatrixToflatTensor<float>(H);
-                    transformOp(inputFloat, blackTemplate, trans);
+
+                    // paste quad region to one canvas then perform warpping to another
+                    transformOp(inputFloat, blackTemplate, trans, 0.0);
+
+                    int d_row_l = cache_mappings[v_tl].deformed_uv_coord(0);
+                    int d_col_l = cache_mappings[v_tl].deformed_uv_coord(1);
+                    int d_col_r = cache_mappings[v_tr].deformed_uv_coord(1);
+                    int d_row_r = cache_mappings[v_bl].deformed_uv_coord(0);
+                    Eigen::array<int, 3> d_offset = {d_row_l, d_col_l, 0};
+                    Eigen::array<int, 3> d_extent = {d_row_r - d_row_l + 1, d_col_r - d_col_l + 1, 3};
+                    resizedImage.slice(d_offset, d_extent) = blackTemplate.slice(d_offset, d_extent);
                 }
             }
         }
@@ -459,7 +493,7 @@ namespace Image {
             const int origH = segMapping.dimension(0);
             const int origW = segMapping.dimension(1);
             resizedImage.resize(targetHeight, targetWidth, 3);
-
+            resizedImage.setZero();
             // Convert image to float type
             Eigen::Tensor<float, 3, Eigen::RowMajor> retargetImgFloat = resizedImage.template cast<float>();
 
@@ -472,7 +506,10 @@ namespace Image {
             // Solve constraint for later resizing
             buildAndSolveConstraint(patches, origH, origW);
 
-            wrapEachQuad<T>(input, resizedImage);
+            // Perform wrapping of each quad to defrom(retargeting) whole image
+            wrapEachQuad<T>(input, retargetImgFloat);
+
+            resizedImage = retargetImgFloat.cast<T>().eval();
         }
 
         static Eigen::Tensor<float, 3, Eigen::RowMajor> applyColorMap(
@@ -567,7 +604,6 @@ namespace Image {
         float weightDOR;
         float quadSize; ///< grid size in pixels
         float quadWidth, quadHeight;
-        float deformedQuadWidth, deformedQuadHeight;
         int meshCols, meshRows;
 
         int nVertices{0}, nQuads{0}, nVleft{0}, nVright{0}, nVtop{0}, nVbottom{0}; ///< number of vertices

@@ -157,7 +157,6 @@ TEST(Image, wrapping_image)
     Eigen::Tensor<float, 3, Eigen::RowMajor> transformedRGB(RGB.dimension(0), RGB.dimension(1), RGB.dimension(2));
     Eigen::Matrix3f H;
     H << 1.0, 1.0, -250, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0;
-    std::cout << H << std::endl;
     Eigen::Tensor<float, 1, Eigen::RowMajor> trans_row = perspectiveMatrixToflatTensor<float>(H);
     transformOp(RGB.cast<float>(), transformedRGB, trans_row);
     Image::savePNG<uint8_t, 3>("./transformed", transformedRGB.cast<uint8_t>());
@@ -168,28 +167,29 @@ TEST(Image, homography)
 {
     ImageProjectiveTransformOp<float> transformOp{"nearest", "constant"};
     Eigen::Tensor<uint8_t, 3, Eigen::RowMajor> RGB = loadPNG<uint8_t>("./test/test_image/panda.png", 3);
-    Eigen::Tensor<float, 3, Eigen::RowMajor> transformedRGB(RGB.dimension(0), RGB.dimension(1), RGB.dimension(2));
+    Eigen::Tensor<float, 3, Eigen::RowMajor> transformedRGB(200, 200, RGB.dimension(2));
 
     std::array<Eigen::Vector2f, 4> uvSrc = {
-        Eigen::Vector2f{10, 10}, // top-left corner
-        Eigen::Vector2f{210, 10}, // botton-left corner
-        Eigen::Vector2f{210, 210}, // botton-right corner
-        Eigen::Vector2f{10, 210} // top-right corner
+        Eigen::Vector2f{0, 0}, // top-left corner
+        Eigen::Vector2f{0, 15}, // botton-left corner
+        Eigen::Vector2f{15, 0}, // botton-right corner
+        Eigen::Vector2f{27, 15} // top-right corner
     };
 
     std::array<Eigen::Vector2f, 4> uvDst = {
-        Eigen::Vector2f{50, 50}, // top-left corner
-        Eigen::Vector2f{210, 10}, // botton-left corner
-        Eigen::Vector2f{210, 110}, // botton-right corner
-        Eigen::Vector2f{10, 210} // top-right corner
+        Eigen::Vector2f{5, 5}, // top-left corner
+        Eigen::Vector2f{0, 19}, // botton-left corner
+        Eigen::Vector2f{19, 0}, // botton-right corner
+        Eigen::Vector2f{27, 19} // top-right corner
     };
 
     Eigen::Matrix3f H = findHomography<SystemSolverMethode::PARTIAL_PIV_LU>(
         uvSrc, uvDst);
+    std::cout << H << std::endl;
     Eigen::Tensor<float, 1, Eigen::RowMajor> trans_row = perspectiveMatrixToflatTensor<float>(H);
     transformOp(RGB.cast<float>(), transformedRGB, trans_row);
     Image::savePNG<uint8_t, 3>("./transformed", transformedRGB.cast<uint8_t>());
-    EXPECT_EQ(0, remove("./transformed.png"));
+    //EXPECT_EQ(0, remove("./transformed.png"));
 }
 
 TEST(Image, rgb_to_cie)

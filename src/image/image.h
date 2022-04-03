@@ -33,6 +33,82 @@ namespace Image {
                     func(image(r, c, d));
     }
 
+    template <typename TColorDepth>
+    void drawLine(Eigen::Tensor<TColorDepth, 3, Eigen::RowMajor>& image, int r1, int c1, int r2, int c2)
+    {
+        const int CHANNELS = image.dimension(2);
+        const int H = image.dimension(0);
+        const int W = image.dimension(1);
+        // calcullate coefficients A,B,C of line
+        // from equation Ax + By + C = 0
+        int A = r2 - r1;
+        int B = c1 - c2;
+        float C = c2 * r1 - c1 * r2;
+        float m;
+        // make sure A is positive to utilize the functiom properly
+        if (A < 0) {
+            A = -A;
+            B = -B;
+            C = -C;
+        }
+        // calculate the slope of the line
+        // check for division by zero
+        if (B != 0)
+            m = -A / B;
+        // make sure you start drawing in the right direction
+        std::tie(c1, c2) = std::minmax(c1, c2);
+        std::tie(r1, r2) = std::minmax(r1, r2);
+
+        std::function<float(float, float)> lineEquation = [&](float x, float y) {
+            return A * x + B * y + C;
+        };
+
+        // vertical line
+        if (B == 0) {
+            for (int r_ = r1; r_ <= r2; r_++)
+                for (int d = 0; d < CHANNELS; d++)
+                    image(r_, c1, d) = 255.0;
+        }
+        else if (A == 0) {
+            // horizontal line
+            for (int c_ = c1; c_ <= c2; c_++)
+                for (int d = 0; d < CHANNELS; d++)
+                    image(r1, c_, d) = 255.0;
+        }
+        else if (0 < m < 1) { // slope between 0 and 1
+            for (int c_ = c1; c_ <= c2; c_++) {
+                for (int d = 0; d < CHANNELS; d++)
+                    image(r1, c_, d) = 255.0;
+                if (lineEquation(c_ + 1, (float)r1 + 0.5) > 0)
+                    r1 = (r1 + 1 < H) ? r1 + 1 : r1;
+            }
+        }
+        else if (m >= 1) { // slope greater than or equal to 1
+            for (int r_ = r1; r_ <= r2; r_++) {
+                for (int d = 0; d < CHANNELS; d++)
+                    image(r_, c1, d) = 255.0;
+                if (lineEquation((float)c1 + 0.5, r_ + 1) > 0)
+                    c1 = (c1 + 1 < W) ? c1 + 1 : c1;
+            }
+        }
+        else if (m <= -1) { // slope less then -1
+            for (int r_ = r1; r_ <= r2; r_++) {
+                for (int d = 0; d < CHANNELS; d++)
+                    image(r_, c2, d) = 255.0;
+                if (lineEquation((float)c2 - 0.5, r_ + 1) > 0)
+                    c2 = (c2 - 1 >= 0) ? c2 - 1 : c2;
+            }
+        }
+        else if (-1 < m < 0) { //slope between -1 and 0
+            for (int c_ = c1; c_ <= c2; c_++) {
+                for (int d = 0; d < CHANNELS; d++)
+                    image(r2, c_, d) = 255.0;
+                if (lineEquation(c_ + 1, (float)r2 - 0.5) > 0)
+                    r2 = (r2 - 1 >= 0) ? r2 - 1 : r2;
+            }
+        }
+    }
+
     namespace Functor {
 
         template <typename SrcType, typename DstType, typename Device = Eigen::DefaultDevice>

@@ -7,12 +7,12 @@
 int main(int argc, const char* argv[])
 {
     struct myOpts {
-        std::string InputImage{"./datasets/maple.png"};
+        std::string InputImage{"./datasets/butterfly.png"};
         float Sigma{0.5};
         float SegmentK{500.0};
         int MinSize{100};
         float MergePercent{0.0001};
-        float MergeColorDist{20.0};
+        float MergeColorDist{30.0};
         bool SaveSegment{true};
         int DistC{3};
         int SimilarK{64};
@@ -20,13 +20,13 @@ int main(int argc, const char* argv[])
         int ScaleU{6};
         bool SaveSaliency{true};
         bool SaveScaledSaliency{true};
-        int newH{300};
-        int newW{400};
+        int newH{200};
+        int newW{500};
         float Alpha{0.8f};
-        int QuadSize{50};
-        float WeightDST{5.5f};
-        float WeightDLT{0.8f};
-        float WeightDOR{20.0f};
+        int QuadSize{10};
+        float WeightDST{1.0f};
+        float WeightDLT{1.0f};
+        float WeightDOR{0.5f};
     };
 
     auto parser = CommndLineParser<myOpts>::create({{"--InputImage", &myOpts::InputImage, "Input image location"},
@@ -46,7 +46,7 @@ int main(int argc, const char* argv[])
         {"--newW", &myOpts::newW, "Resizing Weight."},
         {"--Alpha", &myOpts::Alpha, "Weighting factor for the energy terms Dst and Dlt."},
         {"--QuadSize", &myOpts::QuadSize, "Height/Width of each quad to be deformed."},
-        {"--WeightDST", &myOpts::WeightDST, "Weight factor for avoid over-deformation on patches with low significant"},
+        {"--WeightDST", &myOpts::WeightDST, "Weight factor for preserve the patches with high significance"},
         {"--WeightDLT", &myOpts::WeightDLT, "Weight factor for avoid over-deformation on patches with low significant"},
         {"--WeightDOR", &myOpts::WeightDOR, "Weight factor for avoid skew artifacts."}});
 
@@ -111,4 +111,5 @@ int main(int argc, const char* argv[])
         args.WeightDOR);
 
     wrapping->reconstructImage<uint8_t>(input, segMapping, patches, resizedImage);
+    Image::savePNG("./retargeting-result" + std::to_string(args.newH) + std::to_string(args.newW), resizedImage);
 }

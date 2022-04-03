@@ -49,10 +49,10 @@ namespace Numerical {
         }
 
         template <typename Dest, typename Rhs>
-        void solve(Dest& x, const Rhs& rhs, const int maxIters = 5000)
+        void solveWithGuess(Dest& x, const Rhs& rhs, const int maxIters = 5000)
         {
             if (status != SolverStatus::RhsStable)
-                throw std::runtime_error("Need to fill right handside");
+                throw std::runtime_error("Need to fill right hand side");
             // build linear system
             Eigen::SparseMatrix<double> A;
             A.resize(rows, cols);
