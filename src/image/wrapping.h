@@ -5,6 +5,7 @@
 #include <image/homography.h>
 #include <image/image.h>
 #include <image/perspective_transform_op.h>
+#include <image/pool.h>
 #include <image/utils.h>
 #include <iostream>
 #include <list>
@@ -85,6 +86,51 @@ namespace Image {
         int patch_index; ///< corresponding patch index of stored segment Id
         Eigen::Vector2f deformed_uv_coord; ///< deformed uv coordinate
     };
+
+    void wrapEachQuadCpu(
+        const std::vector<CachedCoordMapping>& cache_mappings,
+        const Eigen::Tensor<float, 3, Eigen::RowMajor>& inputFloat,
+        Eigen::Tensor<float, 3, Eigen::RowMajor>& resizedImage,
+        const int targetHeight, const int targetWidth, const int calcRow, const int calcCol, const int meshCols,
+        ImageProjectiveTransformOp<float>& transformOp)
+    {
+        Eigen::Tensor<float, 3, Eigen::RowMajor> blackTemplate(targetHeight, targetWidth, 3);
+        blackTemplate.setZero();
+        // iterate vertices of each quad in CCW order
+        int v_tl = calcRow * meshCols + calcCol; // top-left corner
+        int v_bl = calcRow * meshCols + calcCol + meshCols; // botton-left corner
+        int v_br = calcRow * meshCols + calcCol + meshCols + 1; // botton-right corner
+        int v_tr = calcRow * meshCols + calcCol + 1; // top-right corner
+
+        // Flip coordinate to make it (x, y)
+        std::array<Eigen::Vector2f, 4> quadUVSrc = {
+            cache_mappings[v_tl].pixel_coord.reverse(),
+            cache_mappings[v_bl].pixel_coord.reverse(),
+            cache_mappings[v_br].pixel_coord.reverse(),
+            cache_mappings[v_tr].pixel_coord.reverse()};
+
+        std::array<Eigen::Vector2f, 4> quadUVDst = {
+            cache_mappings[v_tl].deformed_uv_coord.reverse(),
+            cache_mappings[v_bl].deformed_uv_coord.reverse(),
+            cache_mappings[v_br].deformed_uv_coord.reverse(),
+            cache_mappings[v_tr].deformed_uv_coord.reverse()};
+
+        Eigen::Matrix3f H = findHomography<SystemSolverMethode::PARTIAL_PIV_LU>(quadUVDst, quadUVSrc);
+        Eigen::Tensor<float, 1, Eigen::RowMajor> trans = perspectiveMatrixToflatTensor<float>(H);
+
+        // paste quad region to one canvas then perform warpping to another
+        transformOp(inputFloat, blackTemplate, trans, 0.0);
+
+        int d_row_l = std::min((int)cache_mappings[v_tl].deformed_uv_coord(0), (int)cache_mappings[v_tr].deformed_uv_coord(0));
+        int d_col_l = std::min((int)cache_mappings[v_tl].deformed_uv_coord(1), (int)cache_mappings[v_bl].deformed_uv_coord(1));
+        int d_col_r = std::max((int)cache_mappings[v_br].deformed_uv_coord(1), (int)cache_mappings[v_tr].deformed_uv_coord(1));
+        int d_row_r = std::max((int)cache_mappings[v_br].deformed_uv_coord(0), (int)cache_mappings[v_bl].deformed_uv_coord(0));
+        int delta_row = std::max(0, d_row_r - d_row_l + 1);
+        int delta_col = std::max(0, d_col_r - d_col_l + 1);
+        Eigen::array<int, 3> d_offset = {d_row_l, d_col_l, 0};
+        Eigen::array<int, 3> d_extent = {delta_row, delta_col, 3};
+        resizedImage.slice(d_offset, d_extent) = blackTemplate.slice(d_offset, d_extent);
+    }
 
     class Wrapping {
     public:
@@ -442,52 +488,19 @@ namespace Image {
             const int origH = inputFloat.dimension(0);
             const int origW = inputFloat.dimension(1);
             Eigen::Tensor<float, 3, Eigen::RowMajor> blackTemplate(targetHeight, targetWidth, 3);
-            Eigen::Tensor<bool, 3, Eigen::RowMajor> coverage(targetHeight, targetWidth, 3);
             resizedImage.setConstant(0.0);
-            coverage.setConstant(false);
             // iterate each quad and apply transform
-            for (int row = 0; row < meshRows - 1; row++) {
-                for (int col = 0; col < meshCols - 1; col++) {
-                    blackTemplate.setZero();
-                    // iterate vertices of each quad in CCW order
-                    int v_tl = row * meshCols + col; // top-left corner
-                    int v_bl = row * meshCols + col + meshCols; // botton-left corner
-                    int v_br = row * meshCols + col + meshCols + 1; // botton-right corner
-                    int v_tr = row * meshCols + col + 1; // top-right corner
 
-                    // Flip coordinate to make it (x, y)
-                    std::array<Eigen::Vector2f, 4> quadUVSrc = {
-                        cache_mappings[v_tl].pixel_coord.reverse(),
-                        cache_mappings[v_bl].pixel_coord.reverse(),
-                        cache_mappings[v_br].pixel_coord.reverse(),
-                        cache_mappings[v_tr].pixel_coord.reverse()};
-
-                    std::array<Eigen::Vector2f, 4> quadUVDst = {
-                        cache_mappings[v_tl].deformed_uv_coord.reverse(),
-                        cache_mappings[v_bl].deformed_uv_coord.reverse(),
-                        cache_mappings[v_br].deformed_uv_coord.reverse(),
-                        cache_mappings[v_tr].deformed_uv_coord.reverse()};
-
-                    Eigen::Matrix3f H = findHomography<SystemSolverMethode::PARTIAL_PIV_LU>(quadUVDst, quadUVSrc);
-                    Eigen::Tensor<float, 1, Eigen::RowMajor> trans = perspectiveMatrixToflatTensor<float>(H);
-
-                    // paste quad region to one canvas then perform warpping to another
-                    transformOp(inputFloat, blackTemplate, trans, 0.0);
-
-                    int d_row_l = std::min((int)cache_mappings[v_tl].deformed_uv_coord(0), (int)cache_mappings[v_tr].deformed_uv_coord(0));
-                    int d_col_l = std::min((int)cache_mappings[v_tl].deformed_uv_coord(1), (int)cache_mappings[v_bl].deformed_uv_coord(1));
-                    int d_col_r = std::max((int)cache_mappings[v_br].deformed_uv_coord(1), (int)cache_mappings[v_tr].deformed_uv_coord(1));
-                    int d_row_r = std::max((int)cache_mappings[v_br].deformed_uv_coord(0), (int)cache_mappings[v_bl].deformed_uv_coord(0));
-                    int delta_row = std::max(0, d_row_r - d_row_l + 1);
-                    int delta_col = std::max(0, d_col_r - d_col_l + 1);
-                    Eigen::array<int, 3> d_offset = {d_row_l, d_col_l, 0};
-                    Eigen::array<int, 3> d_extent = {delta_row, delta_col, 3};
-                    resizedImage.slice(d_offset, d_extent) = blackTemplate.slice(d_offset, d_extent);
-                    coverage.slice(d_offset, d_extent) = coverage.slice(d_offset, d_extent).setConstant(true).eval();
-                }
-            }
-            // post-processing to fill holes, this is mostly due to extreme deformed pixel cooridinate
-            std::cout << coverage.all() << std::endl;
+            const uint32_t workerSize = 16;
+            CustomThreadPool pool(workerSize);
+            uint32_t numTasks = meshRows - 1;
+            pool.parallelForLoop(
+                0, meshRows - 1, [this, &inputFloat, &resizedImage, &transformOp](const int& start, const int& end) {
+                    for (int calcRow = start; calcRow < end; calcRow++)
+                        for (int calcCol = 0; calcCol < meshCols - 1; calcCol++)
+                            wrapEachQuadCpu(cache_mappings, inputFloat, resizedImage, targetHeight, targetWidth, calcRow, calcCol, meshCols, transformOp);
+                },
+                numTasks);
         }
 
         template <typename T>

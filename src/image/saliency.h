@@ -200,7 +200,7 @@ namespace Image {
     public:
         explicit ContextAwareSaliency() : K{64}, distC{3}, nScale{3}
         {
-            resizingOp = ResizingImageOp<float>("nearest_neighbor", true, false);
+            resizingOp = ResizingImageOp<float>("bilinear", true, false);
         }
 
         void setK(int K_)
