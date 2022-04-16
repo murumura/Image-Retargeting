@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 
 set(RESIZING_TEST_SOURCE
     ${CMAKE_SOURCE_DIR}/test/main.cpp
+    ${CMAKE_SOURCE_DIR}/test/test_saliency_utils.cpp
     ${CMAKE_SOURCE_DIR}/test/test_image.cpp
     ${CMAKE_SOURCE_DIR}/test/test_resizing.cpp
     ${CMAKE_SOURCE_DIR}/test/test_padding.cpp
@@ -10,6 +11,7 @@ set(RESIZING_TEST_SOURCE
 
 add_executable(resizing_test
     ${RESIZING_TEST_SOURCE}
+    ${CMAKE_SOURCE_DIR}/src/image/saliency_utils.cpp
 )
 target_include_directories(resizing_test
     PUBLIC

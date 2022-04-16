@@ -125,6 +125,7 @@ namespace Image {
         int d_col_l = std::min((int)cache_mappings[v_tl].deformed_uv_coord(1), (int)cache_mappings[v_bl].deformed_uv_coord(1));
         int d_col_r = std::max((int)cache_mappings[v_br].deformed_uv_coord(1), (int)cache_mappings[v_tr].deformed_uv_coord(1));
         int d_row_r = std::max((int)cache_mappings[v_br].deformed_uv_coord(0), (int)cache_mappings[v_bl].deformed_uv_coord(0));
+
         int delta_row = std::max(0, d_row_r - d_row_l + 1);
         int delta_col = std::max(0, d_col_r - d_col_l + 1);
         Eigen::array<int, 3> d_offset = {d_row_l, d_col_l, 0};
@@ -471,8 +472,8 @@ namespace Image {
             solver.solveWithGuess(Vp, rhs);
             // Record deformed vertice cooridinate
             for (int v = 0; v < nVertices; v++) {
-                cache_mappings[v].deformed_uv_coord(1) = std::min((int)std::ceil(std::abs(Vp(v))), (int)targetWidth - 1); //column
-                cache_mappings[v].deformed_uv_coord(0) = std::min((int)std::ceil(std::abs(Vp(v + nVertices))), (int)targetHeight - 1); // row
+                cache_mappings[v].deformed_uv_coord(1) = std::min((float)Vp(v), (float)targetWidth - 1); //column
+                cache_mappings[v].deformed_uv_coord(0) = std::min((float)Vp(v + nVertices), (float)targetHeight - 1); // row
             }
 
             drawDeformedMeshGrid("deformed");
@@ -526,7 +527,7 @@ namespace Image {
             // Solve constraint for later resizing
             buildAndSolveConstraint(patches, origH, origW);
 
-            // Perform wrapping of each quad to defrom(retargeting) whole image
+            // Perform wrapping of each quad to defrom (retargeting) whole image
             wrapEachQuad<T>(input, retargetImgFloat);
 
             resizedImage = retargetImgFloat.cast<T>().eval();

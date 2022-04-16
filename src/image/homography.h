@@ -38,9 +38,9 @@ namespace Image {
     /**
      * @brief   Calculates the homography matrix (3x3) to convert between two points of view:
      *  P_dst = H * P_src; useing 4 pairs of corresponding Points.
-     * @param[in]  src  The 4 Points representation source points.
-     *  @param[in] dst  The 4 Points representation destion points.
-     * @param[in] methode  Which methode should be used to calculate Ax=b. Have a look above which are avaiable.
+     * @param[in] src  The 4 Points representation source points.
+     * @param[in] dst  The 4 Points representation destion points.
+     * @param[in] method  Which methode should be used to calculate Ax=b. Have a look above which are avaiable.
      * 
      * @return Eigen::Matrix3d found homography.
      */

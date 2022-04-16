@@ -26,6 +26,7 @@ namespace Image {
         std::vector<float> scaleUSets;
 
         ResizingImageOp<float> resizingOp;
+
         void computeSalienceValueParallel(
             const Eigen::Tensor<float, 3, Eigen::RowMajor>& singleScalePatch,
             const Eigen::Tensor<float, 4, Eigen::RowMajor>& multiScalePatch,
@@ -34,7 +35,7 @@ namespace Image {
             const int H = multiScalePatch.dimension(1);
             const int W = multiScalePatch.dimension(2);
 #ifdef RESIZING_USE_CUDA
-            return calcSaliencyValueCuda(singleScalePatch, multiScalePatch, salienceMap, distC, K);
+            calcSaliencyValueCuda(singleScalePatch, multiScalePatch, salienceMap, distC, K);
 #else
             const uint32_t workerSize = 16;
             CustomThreadPool pool(workerSize);
@@ -52,8 +53,7 @@ namespace Image {
 
         Eigen::Tensor<float, 3, Eigen::RowMajor>
         createPatchMap(
-            const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB,
-            int u, bool normalize = true)
+            const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB, int u)
         {
             const int H = imgSrcLAB.dimension(0);
             const int W = imgSrcLAB.dimension(1);
@@ -65,10 +65,12 @@ namespace Image {
                 for (int col = 0; col < W; ++col) {
                     int n = 0;
                     float l = 0, a = 0, b = 0;
-                    for (int r = row - u; r <= row + u; ++r) {
+                    int l_offset = u / 2;
+                    int r_offset = u - l_offset;
+                    for (int r = row - l_offset; r < row + r_offset; ++r) {
                         if (r < 0 || r >= H)
                             continue;
-                        for (int c = col - u; c <= col + u; ++c) {
+                        for (int c = col - l_offset; c < col + r_offset; ++c) {
                             if (c < 0 || c >= W)
                                 continue;
                             ++n;
@@ -83,7 +85,6 @@ namespace Image {
                     imgSrcLABPatch(row, col, 2) = b / n;
                 }
             }
-
             return imgSrcLABPatch;
         }
 
@@ -116,7 +117,7 @@ namespace Image {
             // Including the immediate context by S_i = \bar{S_i}(1−d_foci(i)).
             optimization(salienceMap, float(0.8));
 
-            // interpolated back to original image size.
+            // Interpolated back to original image size.
             Eigen::Tensor<float, 3, Eigen::RowMajor> salienceMapOrigSize(origH, origW, 1);
             resizingOp(salienceMap, salienceMapOrigSize);
 
@@ -135,6 +136,25 @@ namespace Image {
             float minimum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)S.minimum())(0);
             float maximum = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)S.maximum())(0);
             S = ((S - minimum) / (maximum - minimum)).eval();
+        }
+
+        void normalizeLAB(Eigen::Tensor<float, 3, Eigen::RowMajor>& lab)
+        {
+            auto L = lab.chip<2>(0);
+            auto A = lab.chip<2>(1);
+            auto B = lab.chip<2>(2);
+
+            const float l_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)L.minimum())(0);
+            const float a_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)A.minimum())(0);
+            const float b_min = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)B.minimum())(0);
+
+            const float l_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)L.maximum())(0);
+            const float a_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)A.maximum())(0);
+            const float b_max = ((Eigen::Tensor<float, 0, Eigen::RowMajor>)B.maximum())(0);
+
+            L = (L - l_min) / (1 + l_max - l_min);
+            A = (A - a_min) / (1 + a_max - a_min);
+            B = (B - b_min) / (1 + b_max - b_min);
         }
 
         void optimization(Eigen::Tensor<float, 3, Eigen::RowMajor>& S, float threshold = 0.8)
@@ -255,9 +275,9 @@ namespace Image {
             float scaleRatio = 250.0 / float(std::max(imgSrc.dimension(0), imgSrc.dimension(1)));
 
             Eigen::Tensor<float, 3, Eigen::RowMajor> imgLab250(imgLab.dimension(0) * scaleRatio, imgLab.dimension(1) * scaleRatio, imgLab.dimension(2));
-
             resizingOp(imgLab, imgLab250);
-            const int M = 5;
+
+            const int M = scaleUSets.size();
             std::vector<int> u;
             for (int i = 0; i < M; i++) {
                 // Calculate scale value for multi-scale saliency enhancement

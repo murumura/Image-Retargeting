@@ -12,7 +12,7 @@ make
 # ----- Or compile with CUDA support -----
 make CUDA=1
 # ----- Execute with defualt parameters-----
-/build/default/default/patch_based_resizing
+./build/default/default/patch_based_resizing
 ```
 (see below for detail execution arguments)
 ### Argument specification for execution

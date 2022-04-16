@@ -84,6 +84,8 @@ set (RESIZING_HEADER
     ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.cpp
     ${CMAKE_SOURCE_DIR}/src/image/resizing_op.h
     ${CMAKE_SOURCE_DIR}/src/image/perspective_transform_op.h
+    ${CMAKE_SOURCE_DIR}/src/image/saliency_utils.h
+    ${CMAKE_SOURCE_DIR}/src/image/saliency_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/image/homography.h
     # geometry header/sources
     ${CMAKE_SOURCE_DIR}/src/geometry/common.h
@@ -96,6 +98,7 @@ set (RESIZING_HEADER
 if(CUDA_FOUND)
     list(APPEND RESIZING_HEADER  ${CMAKE_SOURCE_DIR}/src/image/compute_saliency.cu)
 endif()
+
 set (RESIZING_SOURCE
     ${CMAKE_SOURCE_DIR}/src/retargeting.cpp
 )

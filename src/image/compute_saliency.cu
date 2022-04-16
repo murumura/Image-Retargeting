@@ -129,9 +129,9 @@ namespace Image {
                         colorDist += powf((singleScalePatch[i1] - multiScalePatch[i2] + 0.0), 2);
                     }
                     colorDist = sqrt(colorDist);
-                    float dRow = (calcR - row + 0.0);
-                    float dCol = (calcC - col + 0.0);
-                    posDist = sqrt(dRow * dRow + dCol * dCol) / L;
+                    float dRow = (calcR - row + 0.0) / L;
+                    float dCol = (calcC - col + 0.0) / L;
+                    posDist = sqrt(dRow * dRow + dCol * dCol);
                     float dist = colorDist / (1.0 + distC * posDist);
                     mink.add(dist);
                     if (colorDist > maxColorDist)

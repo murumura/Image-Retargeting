@@ -17,16 +17,16 @@ int main(int argc, const char* argv[])
         int DistC{3};
         int SimilarK{64};
         int NumScale{3};
-        int ScaleU{6};
+        int PatchSize{7};
         bool SaveSaliency{true};
         bool SaveScaledSaliency{true};
         int newH{300};
-        int newW{700};
+        int newW{250};
         float Alpha{0.8f};
         int QuadSize{10};
         float WeightDST{3.0f};
         float WeightDLT{1.2f};
-        float WeightDOR{12.0f};
+        float WeightDOR{0.9f};
     };
 
     auto parser = CommndLineParser<myOpts>::create({{"--InputImage", &myOpts::InputImage, "Input image location"},
@@ -39,7 +39,7 @@ int main(int argc, const char* argv[])
         {"--DistC", &myOpts::DistC, "Scale variable of position distance"},
         {"--SimilarK", &myOpts::SimilarK, "K most similar patches"},
         {"--NumScale", &myOpts::NumScale, "Number of Patches Scale"},
-        {"--ScaleU", &myOpts::ScaleU, "Patches Scale value"},
+        {"--PatchSize", &myOpts::PatchSize, "Patches Scale value"},
         {"--SaveScaledSaliency", &myOpts::SaveScaledSaliency, "Whether to save saliency result of each scale."},
         {"--SaveSaliency", &myOpts::SaveSaliency, "Whether to save saliency result."},
         {"--newH", &myOpts::newH, "Resizing Height."},
@@ -80,7 +80,7 @@ int main(int argc, const char* argv[])
         args.DistC,
         args.SimilarK,
         args.NumScale,
-        args.ScaleU,
+        args.PatchSize,
         args.SaveScaledSaliency);
 
     // Store saliency map of input image

@@ -185,7 +185,7 @@ TEST(Image, homography)
 
     Eigen::Matrix3f H = findHomography<SystemSolverMethode::PARTIAL_PIV_LU>(
         uvSrc, uvDst);
-    std::cout << H << std::endl;
+    //std::cout << H << std::endl;
     Eigen::Tensor<float, 1, Eigen::RowMajor> trans_row = perspectiveMatrixToflatTensor<float>(H);
     transformOp(RGB.cast<float>(), transformedRGB, trans_row);
     Image::savePNG<uint8_t, 3>("./transformed", transformedRGB.cast<uint8_t>());

@@ -16,6 +16,7 @@ namespace Image {
         REFLECT = 1, ///< pads with reflect values, with string "reflect" which not replicate edge value
         SYMMETRIC = 2, ///< pads with reflect values, with string "reflect" which replicate edge value
         EDGE = 3, ///<pads with the edge values, with string "edge"
+        VALID = 4, ///< no padding perform
     };
 
     // Converts a string into the corresponding padding mode.
@@ -34,6 +35,9 @@ namespace Image {
         }
         else if (lower_case == "edge") {
             return PadMode::EDGE;
+        }
+        else if (lower_case == "valid") {
+            return PadMode::VALID;
         }
         else {
             throw std::invalid_argument("Unknown padding mode: " + mode);
@@ -208,6 +212,10 @@ namespace Image {
                 mode = PadMode::CONSTANT;
                 break;
             }
+            case PadMode::VALID: {
+                mode = PadMode::VALID;
+                break;
+            }
             default:
                 throw std::invalid_argument("Invalid padding mode" + padMode);
             }
@@ -222,7 +230,9 @@ namespace Image {
             const Device& device = Eigen::DefaultDevice()) const
         {
             output.resize(input.dimensions()[0] + pL + pR, input.dimensions()[1] + pT + pD, input.dimensions()[2]);
-            if (mode == PadMode::CONSTANT)
+            if (mode == PadMode::VALID)
+                output = input;
+            else if (mode == PadMode::CONSTANT)
                 Functor::ConstantPad<Scalar>()(input, output, pL, pR, pT, pD, padValue);
             else if (mode == PadMode::REFLECT || mode == PadMode::SYMMETRIC)
                 Functor::MirrorPad<Scalar>()(input, output, pL, pR, pT, pD, offset);
