@@ -22,7 +22,6 @@ RUN apt-get update && apt-get upgrade -y &&\
         libcurl4-openssl-dev --fix-broken \
         libgmock-dev \
         libgtest-dev \
-        libeigen3-dev \
         pkg-config \
     && rm -rf /var/lib/apt/lists/*
 

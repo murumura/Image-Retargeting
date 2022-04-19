@@ -5,6 +5,12 @@ namespace Image {
 
     namespace cudaUtils {
 
+        __host__ __device__ inline float sigmoidCuda(const float x, const float alpha, const float beta = 0.f)
+        {
+            const float val = (x - beta) / alpha;
+            return 1.0f / (1.0f + expf(-val));
+        }
+
         template <typename val_t>
         class MinK {
         public:
@@ -100,9 +106,11 @@ namespace Image {
     __global__ void calcSaliencyCudaKernel(
         const float* __restrict__ singleScalePatch,
         const float* __restrict__ multiScalePatch,
+        const int* __restrict__ indices,
         float* __restrict__ output,
         const int distC, const int K,
-        const int B, const int H, const int W, const int C)
+        const int B, const int pH, const int pW, const int C,
+        const int H, const int W)
     {
         int index = threadIdx.x + (blockDim.x * blockIdx.x);
 
@@ -111,27 +119,37 @@ namespace Image {
         float minColorDist = 2e5, maxColorDist = 2e-5;
         // maintain k-smallest elements
         cudaUtils::MinK<float> mink(diffValues, K);
-        int calcR = index / W;
-        int calcC = index % W;
-        if (calcR >= H || calcC >= W)
+        int calcR = index / pW;
+        int calcC = index % pW;
+        if (calcR >= pH || calcC >= pW)
             return;
 
         float colorDist = 0;
         float posDist = 0;
         const int L = max(H, W);
+
+        Index pixel_i = calcR * pW * 2 + calcC * 2;
+        const int pixelR = indices[pixel_i];
+        const int pixelC = indices[pixel_i + 1];
+
         for (int batch = 0; batch < B; batch++)
-            for (int row = 0; row < H; row++)
-                for (int col = 0; col < W; col++) {
+            for (int p_row = 0; p_row < pH; p_row++)
+                for (int p_col = 0; p_col < pW; p_col++) {
+                    if (p_row == calcR && p_col == calcC)
+                        continue;
                     colorDist = 0;
                     for (int ch = 0; ch < C; ch++) {
-                        Index i1 = calcR * W * C + calcC * C + ch;
-                        Index i2 = batch * H * W * C + row * W * C + col * C + ch;
+                        Index i1 = calcR * pW * C + calcC * C + ch;
+                        Index i2 = batch * pH * pW * C + p_row * pW * C + p_col * C + ch;
                         colorDist += powf((singleScalePatch[i1] - multiScalePatch[i2] + 0.0), 2);
                     }
-                    colorDist = sqrt(colorDist);
-                    float dRow = (calcR - row + 0.0) / L;
-                    float dCol = (calcC - col + 0.0) / L;
-                    posDist = sqrt(dRow * dRow + dCol * dCol);
+                    colorDist = cudaUtils::sigmoidCuda(sqrt(colorDist), 0.1, 0.0);
+                    Index i = p_row * pW * 2 + p_col * 2;
+                    const int row = indices[i];
+                    const int col = indices[i + 1];
+                    float dRow = (pixelR - row + 1e-3);
+                    float dCol = (pixelC - col + 1e-3);
+                    posDist = sqrt(dRow * dRow + dCol * dCol) / L;
                     float dist = colorDist / (1.0 + distC * posDist);
                     mink.add(dist);
                     if (colorDist > maxColorDist)
@@ -152,37 +170,42 @@ namespace Image {
     void calcSaliencyValueCuda(
         const Eigen::Tensor<float, 3, Eigen::RowMajor>& singleScalePatch,
         const Eigen::Tensor<float, 4, Eigen::RowMajor>& multiScalePatches,
+        const Eigen::Tensor<int, 3, Eigen::RowMajor>& indices,
         Eigen::Tensor<float, 3, Eigen::RowMajor>& salienceMap,
-        int distC,
-        int K)
+        const int distC,
+        const int K, const int H, const int W)
     {
         const int B = multiScalePatches.dimension(0);
-        const int H = multiScalePatches.dimension(1);
-        const int W = multiScalePatches.dimension(2);
+        const int pH = multiScalePatches.dimension(1);
+        const int pW = multiScalePatches.dimension(2);
         const int C = multiScalePatches.dimension(3);
 
-        const int nThread = W;
-        const int nBlock = iDivUp(H * W, nThread);
+        const int nThread = pW;
+        const int nBlock = iDivUp(pH * pW, nThread);
 
         std::size_t multiScaleTensorBytes = multiScalePatches.size() * sizeof(float);
         std::size_t singleScaleTensorBytes = singleScalePatch.size() * sizeof(float);
+        std::size_t indicesBytes = indices.size() * sizeof(int);
         std::size_t outTensorBytes = salienceMap.size() * sizeof(float);
+
         float* singleScaleDevice;
         float* multiScaleDevice;
+        int* indicesDevice;
         float* imgOutDevice;
-
         // Allocate device memory
         CUDA_CHECK(cudaMalloc((void**)(&singleScaleDevice), singleScaleTensorBytes));
         CUDA_CHECK(cudaMalloc((void**)(&multiScaleDevice), multiScaleTensorBytes));
+        CUDA_CHECK(cudaMalloc((void**)(&indicesDevice), indicesBytes));
         CUDA_CHECK(cudaMalloc((void**)(&imgOutDevice), outTensorBytes));
 
         // Copy data from host to device
         CUDA_CHECK(cudaMemcpy(singleScaleDevice, singleScalePatch.data(), singleScaleTensorBytes, cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(multiScaleDevice, multiScalePatches.data(), multiScaleTensorBytes, cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(indicesDevice, indices.data(), indicesBytes, cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemset(imgOutDevice, 0.0, outTensorBytes));
 
         // Launch kernel
-        calcSaliencyCudaKernel<<<nBlock, nThread>>>(singleScaleDevice, multiScaleDevice, imgOutDevice, distC, K, B, H, W, C);
+        calcSaliencyCudaKernel<<<nBlock, nThread>>>(singleScaleDevice, multiScaleDevice, indicesDevice, imgOutDevice, distC, K, B, pH, pW, C, H, W);
         CUDA_CHECK(cudaGetLastError());
 
         // Blocks until the device has completed all preceding requested tasks

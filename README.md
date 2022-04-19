@@ -39,9 +39,9 @@ All parameters have default values, once a parameter is ignored, the default val
   --newW 300 \
   --Alpha 0.8 \
   --QuadSize 20 \
-  --WeightDST 1.0 \
+  --WeightDST 3.0 \
   --WeightDLT 1.0 \
-  --WeightDOR 0.2
+  --WeightDOR 1.0
 ```
 
 # Requirements
@@ -56,7 +56,7 @@ All parameters have default values, once a parameter is ignored, the default val
     GCC      | 9.3.0
     clang    | 13.0.0
 
-- CUDA toolkit (optional but highly recommend, otherwise it will take ~3hr to generate saliance map using solely multithread)
+- CUDA toolkit (optional but highly recommend, otherwise it will take ~2min to generate saliance map using solely multithread)
 
 For image processing we only requires ```Eigen3``` to be installed on your system.
 
@@ -95,10 +95,10 @@ make run-test
 
 # Result
 
-original-grid                       |  200 x 500                                   | 300 x 200
-:-------------------------:         |:-------------------------:|                :-------------------------:
-![](./results/input-grid-girl.png)  |  ![](./results/result-girl-200-500.png) | ![](./results/result-girl-300-200.png)
-![](./results/input-grid-butterfly.png)  |  ![](./results/result-butterfly-200-500.png) | ![](./results/result-butterfly-300-200.png)
+original-grid                      |saliency|  200 x 500                                   | 300 x 200
+:-------------------------:        |:-------------------------: |:-------------------------:|                :-------------------------:
+![](./results/input-grid-girl.png) | ![](./results/girl-saliency.png)|  ![](./results/result-girl-200-500.png) | ![](./results/result-girl-300-200.png)
+![](./results/input-grid-butterfly.png)| ![](./results/butterfly-saliency.png) |  ![](./results/result-butterfly-200-500.png) | ![](./results/result-butterfly-300-200.png)
 
 # Acknowledgement
 Thank [zyu-tien](https://github.com/zyu-tien) for helping me debugging and giving me helpful advices while developing this project.

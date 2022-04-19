@@ -7,8 +7,8 @@ using testing::Eq;
 TEST(ExtractImagePatch, Basic)
 {
     int input_depth = 3;
-    int input_rows = 10;
-    int input_cols = 10;
+    int input_rows = 250;
+    int input_cols = 170;
     int ksize = 7;
     int stride = 7;
     Eigen::Tensor<float, 3, Eigen::RowMajor> tensor(input_rows, input_cols, input_depth);
@@ -16,7 +16,7 @@ TEST(ExtractImagePatch, Basic)
     for (int i = 0; i < tensor.size(); ++i) {
         tensor.data()[i] = i + 1;
     }
-    auto [patches, indices] = extractImagePatches(tensor, ksize, ksize, ksize / 2, ksize / 2, 1, 1, "reflect");
+    auto [patches, indices] = extractImagePatches(tensor, ksize, ksize, ksize / 2 + 1, ksize / 2 + 1, 1, 1, "reflect");
 
     int64_t out_rows = 0, out_cols = 0;
     int64_t pad_right = 0, pad_left = 0, pad_top = 0, pad_bottom = 0;

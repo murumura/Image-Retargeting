@@ -1,7 +1,7 @@
 # top-level CMakeLists.txt
 cmake_minimum_required (VERSION 3.16)
 
-project (RESIZING LANGUAGES CXX C CUDA)
+project (RESIZING LANGUAGES CXX C)
 
 ###############################################################################
 # C++ compiler setup

@@ -26,7 +26,7 @@ int main(int argc, const char* argv[])
         int QuadSize{10};
         float WeightDST{3.0f};
         float WeightDLT{1.2f};
-        float WeightDOR{0.9f};
+        float WeightDOR{1.0f};
     };
 
     auto parser = CommndLineParser<myOpts>::create({{"--InputImage", &myOpts::InputImage, "Input image location"},

@@ -1,4 +1,5 @@
 #include <image/saliency_utils.h>
+#include <iostream>
 namespace Image {
     void getWindowedOutputSize(int64_t input_size, int64_t filter_size,
         int64_t dilation_rate, int64_t stride, PadMode padding_type,
@@ -18,12 +19,13 @@ namespace Image {
             padding_before = padding_after = 0;
         }
         else {
-            output_size = (input_size + stride - 1) / stride;
+
             const int64_t padding_needed = std::max(int64_t{0}, (output_size - 1) * stride + effective_filter_size - input_size);
             // For odd values of total padding, add more padding at the 'left'
             // side of the given dimension.
             padding_after = padding_needed / 2;
             padding_before = padding_needed - padding_after;
+            output_size = (input_size + padding_before + padding_after - effective_filter_size + stride) / stride;
         }
 
         // clang-format off
@@ -67,6 +69,7 @@ namespace Image {
         // Padding input image for patches extraction
         padding_op(input, padded_input, pad_top, pad_bottom, pad_left, pad_right, static_cast<float>(0.0) /*padding value for constant padding*/);
         Eigen::array<int, 1> reduction_axis = {2};
+
         Eigen::Tensor<float, 3, Eigen::RowMajor> patches = padded_input
                                                                .extract_image_patches(patch_cols, patch_rows, stride_cols,
                                                                    stride_rows, rate_cols, rate_rows,
