@@ -12,7 +12,7 @@ int main(int argc, const char* argv[])
         float SegmentK{500.0};
         int MinSize{100};
         float MergePercent{0.0001};
-        float MergeColorDist{30.0};
+        float MergeColorDist{20.0};
         bool SaveSegment{true};
         int DistC{3};
         int SimilarK{64};
@@ -21,12 +21,12 @@ int main(int argc, const char* argv[])
         bool SaveSaliency{true};
         bool SaveScaledSaliency{true};
         int newH{300};
-        int newW{250};
+        int newW{200};
         float Alpha{0.8f};
         int QuadSize{10};
         float WeightDST{3.0f};
         float WeightDLT{1.2f};
-        float WeightDOR{1.0f};
+        float WeightDOR{3.0f};
     };
 
     auto parser = CommndLineParser<myOpts>::create({{"--InputImage", &myOpts::InputImage, "Input image location"},

@@ -106,11 +106,6 @@ namespace Image {
             S = ((S - minimum) / (maximum - minimum)).eval();
         }
 
-        void normalizeSaliencyV2(Eigen::Tensor<float, 3, Eigen::RowMajor>& S)
-        {
-            S = 1.f / (1.f + (-S).eval().exp());
-        }
-
         void normalizeLAB(Eigen::Tensor<float, 3, Eigen::RowMajor>& lab)
         {
             auto L = lab.chip<2>(0);
@@ -283,7 +278,6 @@ namespace Image {
                     = createSalienceMap(labEachScale, singleScalePatches, indices, patchSizes, imgLab250_H, imgLab250_W);
 
                 std::cout << "  Done" << std::endl;
-
                 if (saveScaledResults)
                     savePNG<uint8_t, 3>("./scale-saliency" + std::to_string(i), (S_i * 255.0f).cast<uint8_t>());
 

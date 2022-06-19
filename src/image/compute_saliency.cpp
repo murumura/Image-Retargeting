@@ -57,7 +57,7 @@ namespace Image {
                     const int c = indices(p_row, p_col, 1);
                     if (calcR == p_row && calcC == p_col)
                         continue;
-                    float colorDist = sigmoidCpu((calcColorDist(b, calcR, calcC, p_row, p_col)), 0.1, 0.1);
+                    float colorDist = sigmoidCpu((calcColorDist(b, calcR, calcC, p_row, p_col)), 0.1, 0.0);
                     float posDist = calcPosDist(pixelR, pixelC, r, c);
                     float dist = colorDist / (1 + distC * posDist);
                     if (minK.size() < K)

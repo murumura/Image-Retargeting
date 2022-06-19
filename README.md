@@ -3,7 +3,10 @@ Patch Based Image Warping for Content Aware Retargeting
 
 A C++ implementation of [Patch Based Image Warping for Content Aware Retargeting (2013)](http://graphics.csie.ncku.edu.tw/Tony/papers/IEEE_Multimedia_resizing_2013_Feb.pdf), including the segmentation algorithm ([Efficient Graph-Based Image Segmentation(2004)](http://people.cs.uchicago.edu/~pff/papers/seg-ijcv.pdf)) and saliency map detection algorithm ([Context-aware saliency detection(2010)](https://ieeexplore.ieee.org/document/6112774)) described in paper. 
 
-The goal is to keep it less third-party library dependency and clean. 
+Instead of relying on third-party image libraries such as openCV, **you only need to install this tensor library** -- [Eigen3](https://eigen.tuxfamily.org/index.php?title=Main_Page). I wrote the operations required to implement these papers myself,the goal is to keep it less third-party library dependency and clean. 
+
+I wrote a cuda kernel for computing saliency to speed up the computation (from 2 min to 2 seconds), this is one of the improvements I made compared to the original implementation.
+
 # How to RUN
 ```bash
 cd Image-Retargeting
@@ -27,21 +30,21 @@ All parameters have default values, once a parameter is ignored, the default val
   --SegmentK 500.0 \
   --MinSize 100 \
   --MergePercent 0.0001 \
-  --MergeColorDist 30.0 \
+  --MergeColorDist 20.0 \
   --SaveSegment true \
   --DistC 3 \
   --SimilarK 64 \
   --NumScale 3 \
-  --ScaleU 6 \
+  --PatchSize 7 \
   --SaveSaliency true \
   --SaveScaledSaliency true \
-  --newH 200 \
-  --newW 300 \
+  --newH 300 \
+  --newW 200 \
   --Alpha 0.8 \
-  --QuadSize 20 \
+  --QuadSize 10 \
   --WeightDST 3.0 \
-  --WeightDLT 1.0 \
-  --WeightDOR 1.0
+  --WeightDLT 1.2 \
+  --WeightDOR 3.0
 ```
 
 # Requirements
@@ -94,11 +97,19 @@ make run-test
 ```
 
 # Result
+| original-grid                              | segmentation                                 | significance                                 | saliency                                 | 200 x 500                                      | 300 x 200                                      |
+|--------------------------------------------|----------------------------------------------|----------------------------------------------|------------------------------------------|------------------------------------------------|------------------------------------------------|
+| ![](./results/input-grid-girl.png)         | ![](./results/girl-segmentation.png)         | ![](./results/girl-significance.png)         | ![](./results/girl-saliency.png)         | ![](./results/result-girl-200-500.png)         | ![](./results/result-girl-300-200.png)         |
+| ![](./results/input-grid-butterfly.png)    | ![](./results/butterfly-segmentation.png)    | ![](./results/butterfly-significance.png)    | ![](./results/butterfly-saliency.png)    | ![](./results/result-butterfly-200-500.png)    | ![](./results/result-butterfly-300-200.png)    |
+| ![](./results/input-grid-Unazukin.png)     | ![](./results/Unazukin-segmentation.png)     | ![](./results/Unazukin-significance.png)     | ![](./results/Unazukin-saliency.png)     | ![](./results/result-Unazukin-200-500.png)     | ![](./results/result-Unazukin-300-200.png)     |
+| ![](./results/input-grid-Sanfrancisco.png) | ![](./results/Sanfrancisco-segmentation.png) | ![](./results/Sanfrancisco-significance.png) | ![](./results/Sanfrancisco-saliency.png) | ![](./results/result-Sanfrancisco-200-500.png) | ![](./results/result-Sanfrancisco-300-200.png) |
+| ![](./results/input-grid-painting2.png)    | ![](./results/painting2-segmentation.png)    | ![](./results/painting2-significance.png)    | ![](./results/painting2-saliency.png)    | ![](./results/result-painting2-200-500.png)    | ![](./results/result-painting2-300-200.png)    |
+| ![](./results/input-grid-eagle.png)        | ![](./results/eagle-segmentation.png)        | ![](./results/eagle-significance.png)        | ![](./results/eagle-saliency.png)        | ![](./results/result-eagle-200-500.png)        | ![](./results/result-eagle-300-200.png)        |
+| ![](./results/input-grid-child.png)        | ![](./results/child-segmentation.png)        | ![](./results/child-significance.png)        | ![](./results/child-saliency.png)        | ![](./results/result-child-200-500.png)        | ![](./results/result-child-300-200.png)        |
+| ![](./results/input-grid-greek_wine.png)   | ![](./results/greek_wine-segmentation.png)   | ![](./results/greek_wine-significance.png)   | ![](./results/greek_wine-saliency.png)   | ![](./results/result-greek_wine-200-500.png)   | ![](./results/result-greek_wine-300-200.png)   |
 
-original-grid                      |saliency|  200 x 500                                   | 300 x 200
-:-------------------------:        |:-------------------------: |:-------------------------:|                :-------------------------:
-![](./results/input-grid-girl.png) | ![](./results/girl-saliency.png)|  ![](./results/result-girl-200-500.png) | ![](./results/result-girl-300-200.png)
-![](./results/input-grid-butterfly.png)| ![](./results/butterfly-saliency.png) |  ![](./results/result-butterfly-200-500.png) | ![](./results/result-butterfly-300-200.png)
 
 # Acknowledgement
 Thank [zyu-tien](https://github.com/zyu-tien) for helping me debugging and giving me helpful advices while developing this project.
+
+All the images used in the project could be downloaded from https://people.csail.mit.edu/mrub/retargetme/download.html.
