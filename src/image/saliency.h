@@ -57,7 +57,7 @@ namespace Image {
 
         std::tuple<Eigen::Tensor<float, 3, Eigen::RowMajor>, Eigen::Tensor<int, 3, Eigen::RowMajor>>
         createPatchMap(
-            const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB, int u)
+            const Eigen::Tensor<float, 3, Eigen::RowMajor>& imgSrcLAB, const int u)
         {
             auto [patches, indices] = extractImagePatches(imgSrcLAB, u, u, std::ceil(u / 2), std::ceil(u / 2), 1, 1, "symmetric");
             return {patches, indices};
@@ -158,7 +158,7 @@ namespace Image {
                             float dRow = (p.first - row + 0.0);
                             float dCol = (p.second - col + 0.0);
                             float _dist = sqrt(dRow * dRow + dCol * dCol);
-                            //minimum distance to attended area
+                            // minimum distance to attended area
                             if (dist > _dist)
                                 dist = _dist;
                         }

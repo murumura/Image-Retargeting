@@ -80,7 +80,6 @@ Make sure the environment variable `CUDA_PATH` is set to the CUDA Toolkit instal
 
 Also Make sure NVCC and cuda-toolkit can be found by your build system.
 
-*Since MacOS no longer support CUDA library since CUDA Toolkit 11.6. Therefore, mac users cannot use cuda to accelerate the calculation of saliance map. In the future, I plan to use metal as an alternative to cuda for mac users. The currently released version has only been fully tested for linux.*
 ## Run test suite
 
 You need to additionally install GTest to run test-suite.

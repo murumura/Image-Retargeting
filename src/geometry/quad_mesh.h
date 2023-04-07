@@ -140,7 +140,7 @@ namespace Geometry {
                 r2 = std::min(r2, H - 1);
                 c2 = std::min(c2, W - 1);
 
-                //store discrete point between vertices
+                // store discrete point between vertices
                 std::vector<std::pair<int, int>> rc_lines;
                 for (int r_ = std::min(r1, r2); r_ <= std::max(r1, r2); r_++)
                     for (int c_ = std::min(c1, c2); c_ <= std::max(c1, c2); c_++)

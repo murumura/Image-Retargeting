@@ -99,7 +99,7 @@ namespace Image {
                     c2 = (c2 - 1 >= 0) ? c2 - 1 : c2;
             }
         }
-        else if (-1 < m < 0) { //slope between -1 and 0
+        else if (-1 < m < 0) { // slope between -1 and 0
             for (int c_ = c1; c_ <= c2; c_++) {
                 for (int d = 0; d < CHANNELS; d++)
                     image(r2, c_, d) = 255.0;

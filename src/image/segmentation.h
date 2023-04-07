@@ -17,7 +17,7 @@ namespace Image {
 
     template <typename T>
     Eigen::Tensor<T, 3, Eigen::RowMajor>
-    randomColor(int segId, int C)
+    randomColor(const int segId, const int C)
     {
         srand(segId);
         Eigen::Tensor<T, 3, Eigen::RowMajor> randomColor;
@@ -36,7 +36,7 @@ namespace Image {
         std::pair<int, int> toUV;
         float weight;
 
-        Edge(int from_, int to_, float weight_, int fromU, int fromV, int toU, int toV)
+        Edge(const int from_, const int to_, const float weight_, const int fromU, const int fromV, const int toU, const int toV)
             : from{from_}, to{to_}, weight{weight_}, fromUV{fromU, fromV}, toUV{toU, toV} {}
 
         bool operator<(const Edge& e) const
@@ -63,7 +63,7 @@ namespace Image {
     // An object to manage set of points, who can be fusionned
     class PointSet {
     public:
-        PointSet(int numElements_)
+        PointSet(const int numElements_)
         {
             numElements = numElements_;
             for (int i = 0; i < numElements; i++) {
@@ -74,7 +74,7 @@ namespace Image {
         int numElements;
 
         // Return the main point of the point's set
-        int getBasePoint(int p)
+        int getBasePoint(const int p)
         {
             int baseP = p;
 
@@ -102,7 +102,7 @@ namespace Image {
         }
 
         // Return the set size of a set (based on the main point)
-        int size(unsigned int p) { return mapping[p].size; }
+        int size(const unsigned int p) { return mapping[p].size; }
 
     private:
         std::vector<PointSetElement> mapping;
@@ -118,24 +118,25 @@ namespace Image {
 
         ~GraphSegmentation(){};
 
-        void setSigma(float sigma_)
+        void setSigma(const float sigma_)
         {
             if (sigma_ <= 0) {
-                sigma_ = 0.001;
+                sigma = 0.001;
             }
-            sigma = sigma_;
+            else
+                sigma = sigma_;
         }
         float getSigma() { return sigma; }
 
-        void setK(float k_) { k = k_; }
+        void setK(const float k_) { k = k_; }
         float getK() { return k; }
 
-        void setMinSize(int minSize_) { minSize = minSize_; }
+        void setMinSize(const int minSize_) { minSize = minSize_; }
         int getMinSize() { return minSize; }
 
-        void setPixelInPatch(float pixelInPatch_) { pixelInPatch = pixelInPatch_; }
+        void setPixelInPatch(const float pixelInPatch_) { pixelInPatch = pixelInPatch_; }
 
-        void setAdjColorDist(float adjColorDist_) { adjColorDist = adjColorDist_; }
+        void setAdjColorDist(const float adjColorDist_) { adjColorDist = adjColorDist_; }
 
     private:
         float sigma;
@@ -251,7 +252,7 @@ namespace Image {
 
         // Map the segemented graph to a image with uniques, sequentials ids
         void finalMapping(
-            std::shared_ptr<PointSet>& es,
+            const std::shared_ptr<PointSet>& es,
             Eigen::Tensor<int, 3, Eigen::RowMajor>& segMapping)
         {
             int height = segMapping.dimension(0);
@@ -496,7 +497,7 @@ namespace Image {
     };
 
     std::shared_ptr<GraphSegmentation> createGraphSegmentation(
-        float sigma, float k, int minSize, float pixelInPatch = -1.0f, float adjColorDist = -1.0f)
+        const float sigma, const float k, const int minSize, const float pixelInPatch = -1.0f, const float adjColorDist = -1.0f)
     {
         std::shared_ptr<GraphSegmentation> graphSeg = std::make_shared<GraphSegmentation>();
         graphSeg->setSigma(sigma);

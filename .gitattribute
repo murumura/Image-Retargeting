@@ -1,2 +1,3 @@
-/src/stb/* linguist-vendored
-
+* linguist-vendored
+*.cu linguist-vendored=false
+*.cpp linguist-vendored=false

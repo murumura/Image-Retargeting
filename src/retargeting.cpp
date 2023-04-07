@@ -4,6 +4,7 @@
 #include <image/saliency.h>
 #include <image/segmentation.h>
 #include <image/wrapping.h>
+#include <image/utils.h>
 int main(int argc, const char* argv[])
 {
     struct myOpts {
@@ -51,6 +52,11 @@ int main(int argc, const char* argv[])
         {"--WeightDOR", &myOpts::WeightDOR, "Weight factor for avoid skew artifacts."}});
 
     auto args = parser->parse(argc, argv);
+
+    if (!Utils::fileExists(args.InputImage)) {
+        std::cerr << "Input image: " << args.InputImage
+                  << " doesn't exist !" << std::endl;
+    }
 
     std::shared_ptr<Image::GraphSegmentation> graphSeg = Image::createGraphSegmentation(
         args.Sigma,

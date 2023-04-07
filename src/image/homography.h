@@ -41,7 +41,7 @@ namespace Image {
      * @param[in] src  The 4 Points representation source points.
      * @param[in] dst  The 4 Points representation destion points.
      * @param[in] method  Which methode should be used to calculate Ax=b. Have a look above which are avaiable.
-     * 
+     *
      * @return Eigen::Matrix3d found homography.
      */
     template <SystemSolverMethode methode>

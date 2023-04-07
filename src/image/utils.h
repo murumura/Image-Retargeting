@@ -1,10 +1,12 @@
 #ifndef UTILS_H
 #define UTILS_H
 #include <cassert>
+#include <fstream>
 #include <memory>
 #include <stddef.h>
 #include <type_traits>
 #include <utility>
+#include <string>
 namespace Utils {
     namespace detail {
         // Trait to select overloads and return types for MakeUnique.
@@ -55,6 +57,12 @@ namespace Utils {
     typename detail::MakeUniqueResult<T>::array makeUnique(size_t n)
     {
         return std::unique_ptr<T>(new typename std::remove_extent<T>::type[n]());
+    }
+
+    inline bool fileExists(const std::string filename)
+    {
+        std::ifstream ifs(filename);
+        return (bool)ifs;
     }
 
 } // namespace Utils

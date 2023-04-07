@@ -3,7 +3,7 @@
 #include <stdio.h>
 namespace Image {
 
-    namespace cudaUtils {
+    namespace CudaUtils {
 
         __host__ __device__ inline float sigmoidCuda(const float x, const float alpha, const float beta = 0.f)
         {
@@ -11,7 +11,7 @@ namespace Image {
             return 1.0f / (1.0f + expf(-val));
         }
 
-        template <typename val_t>
+        template <typename Scalar>
         class MinK {
         public:
             // Constructor.
@@ -19,7 +19,7 @@ namespace Image {
             // Arguments:
             //   vals: Color distance to key track of
             //   K: How many values to keep track of
-            __device__ MinK(val_t* vals, int K)
+            __device__ MinK(Scalar* vals, int K)
                 : vals(vals), K(K), _size(0) {}
 
             // Try to add a new key and associated value to the data structure. If the key
@@ -27,7 +27,7 @@ namespace Image {
             // it will not be kept.
             // Arguments:
             //   val: The value associated to the key
-            __device__ __forceinline__ void add(const val_t& val)
+            __device__ __forceinline__ void add(const Scalar& val)
             {
                 if (_size < K) {
                     vals[_size] = val;
@@ -41,7 +41,7 @@ namespace Image {
                     vals[max_idx] = val;
                     max_val = val;
                     for (int k = 0; k < K; ++k) {
-                        val_t cur_val = vals[k];
+                        Scalar cur_val = vals[k];
                         if (cur_val > max_val) {
                             max_val = cur_val;
                             max_idx = k;
@@ -62,7 +62,7 @@ namespace Image {
                 for (int i = 0; i < _size - 1; ++i) {
                     for (int j = 0; j < _size - i - 1; ++j) {
                         if (vals[j + 1] < vals[j]) {
-                            val_t val = vals[j];
+                            Scalar val = vals[j];
                             vals[j] = vals[j + 1];
                             vals[j + 1] = val;
                         }
@@ -71,10 +71,10 @@ namespace Image {
             }
 
         private:
-            val_t* vals;
+            Scalar* vals;
             int K;
             int _size;
-            val_t max_val;
+            Scalar max_val;
             int max_idx;
         };
 
@@ -92,11 +92,11 @@ namespace Image {
         {
             check(err, "", file, line);
         }
-    } // namespace cudaUtils
+    } // namespace CudaUtils
 
 /// usage: `CUDA_CHECK(cudaError_t err[, const char* prefix])`
 #define CUDA_CHECK(...) \
-    cudaUtils::check(__VA_ARGS__, __FILE__, __LINE__)
+    CudaUtils::check(__VA_ARGS__, __FILE__, __LINE__)
 
 #define MAXK 1000
 
@@ -118,7 +118,7 @@ namespace Image {
 
         float minColorDist = 2e5, maxColorDist = 2e-5;
         // maintain k-smallest elements
-        cudaUtils::MinK<float> mink(diffValues, K);
+        CudaUtils::MinK<float> mink(diffValues, K);
         int calcR = index / pW;
         int calcC = index % pW;
         if (calcR >= pH || calcC >= pW)
@@ -143,7 +143,7 @@ namespace Image {
                         Index i2 = batch * pH * pW * C + p_row * pW * C + p_col * C + ch;
                         colorDist += powf((singleScalePatch[i1] - multiScalePatch[i2] + 0.0), 2);
                     }
-                    colorDist = cudaUtils::sigmoidCuda(sqrt(colorDist), 0.1, 0.0);
+                    colorDist = CudaUtils::sigmoidCuda(sqrt(colorDist), 0.1, 0.0);
                     Index i = p_row * pW * 2 + p_col * 2;
                     const int row = indices[i];
                     const int col = indices[i + 1];

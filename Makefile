@@ -43,7 +43,7 @@ format:
 
 .PHONY: clean
 clean:
-	-@rm -rvf $(BUILDDIR)
+	-@rm -rvf $(BUILDDIR) *.png
 
 .PRECIOUS: $(BUILDDIR)/Makefile
 $(BUILDDIR)/Makefile:

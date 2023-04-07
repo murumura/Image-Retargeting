@@ -136,13 +136,13 @@ namespace Image {
     class Wrapping {
     public:
         explicit Wrapping(
-            std::size_t targetHeight_,
-            std::size_t targetWidth_,
-            float alpha_,
-            float quadSize_,
-            float weightDST_,
-            float weightDLT_,
-            float weightDOR_)
+            const std::size_t targetHeight_,
+            const std::size_t targetWidth_,
+            const float alpha_,
+            const float quadSize_,
+            const float weightDST_,
+            const float weightDLT_,
+            const float weightDOR_)
             : alpha{alpha_},
               targetHeight{targetHeight_},
               targetWidth{targetWidth_},
@@ -286,7 +286,7 @@ namespace Image {
             savePNG<uint8_t, 3>(filename, canvas.cast<uint8_t>());
         }
 
-        void buildAndSolveConstraint(std::vector<Image::Patch>& patches, int origH, int origW)
+        void buildAndSolveConstraint(std::vector<Image::Patch>& patches, const int origH, const int origW)
         {
             nVbottom = nVtop = meshCols;
             nVleft = nVright = meshRows;
@@ -410,7 +410,7 @@ namespace Image {
             for (int row = 0; row < meshRows - 1; row++) {
                 for (int col = 0; col < meshCols - 1; col++) {
                     int vertices = row * meshCols + col;
-                    //iterate in CCW order
+                    // iterate in CCW order
                     const int vax = vertices;
                     const int vay = vertices + nVertices;
                     const int vbx = vertices + meshCols;
@@ -472,7 +472,7 @@ namespace Image {
             solver.solveWithGuess(Vp, rhs);
             // Record deformed vertice cooridinate
             for (int v = 0; v < nVertices; v++) {
-                cache_mappings[v].deformed_uv_coord(1) = std::min((float)Vp(v), (float)targetWidth - 1); //column
+                cache_mappings[v].deformed_uv_coord(1) = std::min((float)Vp(v), (float)targetWidth - 1); // column
                 cache_mappings[v].deformed_uv_coord(0) = std::min((float)Vp(v + nVertices), (float)targetHeight - 1); // row
             }
 
@@ -632,7 +632,7 @@ namespace Image {
         std::vector<CachedCoordMapping> cache_mappings;
     };
 
-    std::shared_ptr<Wrapping> createWrapping(std::size_t targetH, std::size_t targetW, float alpha, float quadSize, float weightDST, float weightDLT, float weightDOR)
+    std::shared_ptr<Wrapping> createWrapping(const std::size_t targetH, const std::size_t targetW, const float alpha, const float quadSize, const float weightDST, const float weightDLT, const float weightDOR)
     {
         std::shared_ptr<Wrapping> imageWarp = std::make_shared<Wrapping>(targetH, targetW, alpha, quadSize, weightDST, weightDLT, weightDOR);
         return imageWarp;
